@@ -3,17 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 
-	"main/pkg/api"
-	"main/pkg/config"
-	"main/pkg/downloader"
-	"main/pkg/fsutil"
-	"main/pkg/logger"
-	"main/pkg/models"
-	"main/pkg/processor"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/api"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/config"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/downloader"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/fsutil"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/logger"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/models"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/processor"
 )
 
 func main() {
@@ -22,18 +19,7 @@ func main() {
 |   | |_ _ ___ ___   |    \ ___ _ _ _ ___| |___ ___ _| |___ ___
 | | | | | | . |_ -|  |  |  | . | | | |   | | . | .'| . | -_|  _|
 |_|___|___|_  |___|  |____/|___|_____|_|_|_|___|__,|___|___|_|
-	  |___|
-`)
-
-	// Change to script directory
-	scriptDir, err := getScriptDir()
-	if err != nil {
-		panic(err)
-	}
-	err = os.Chdir(scriptDir)
-	if err != nil {
-		panic(err)
-	}
+	  |___|`)
 
 	// Parse configuration
 	cfg, err := config.ParseCfg()
@@ -114,7 +100,7 @@ func main() {
 		switch mediaType {
 		case 0:
 			itemErr = processor.ProcessAlbum(itemId, streamParams, nil)
-		case 1, 2:
+		case 1, 2, 11:
 			itemErr = processor.ProcessPlaylist(itemId, legacyToken, streamParams, false)
 		case 3:
 			itemErr = processor.ProcessCatalogPlist(itemId, legacyToken, streamParams)
@@ -143,34 +129,4 @@ func main() {
 				"url", url)
 		}
 	}
-}
-
-// getScriptDir returns the directory of the script
-func getScriptDir() (string, error) {
-	var (
-		ok    bool
-		err   error
-		fname string
-	)
-
-	runFromSrc := wasRunFromSrc()
-	if runFromSrc {
-		_, fname, _, ok = runtime.Caller(0)
-		if !ok {
-			return "", fmt.Errorf("failed to get script filename")
-		}
-	} else {
-		fname, err = os.Executable()
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return filepath.Dir(fname), nil
-}
-
-// wasRunFromSrc checks if the program was run from source
-func wasRunFromSrc() bool {
-	buildPath := filepath.Join(os.TempDir(), "go-build")
-	return strings.HasPrefix(os.Args[0], buildPath)
 }

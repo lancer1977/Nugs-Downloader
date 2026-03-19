@@ -1,4 +1,4 @@
-module main
+module github.com/Sorrow446/Nugs-Downloader
 
 go 1.22.3
 

@@ -5,5 +5,5 @@
     "videoFormat": 5,
     "outPath": "Nugs downloads",
     "token": "",
-    "useFfmpegEnvVar": false
+    "useFfmpegEnvVar": true
 }

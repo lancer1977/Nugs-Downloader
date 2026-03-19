@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Sorrow446/Nugs-Downloader/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"main/pkg/models"
 )
 
 // TestSuite for api package
@@ -122,9 +122,9 @@ func (suite *ApiTestSuite) handleSubInfo(w http.ResponseWriter, r *http.Request)
 			PlanID:      "plan-123",
 		},
 		LegacySubscriptionID: "sub-456",
-		StartedAt:           "01/01/2024 00:00:00",
-		EndsAt:             "12/31/2024 23:59:59",
-		IsContentAccessible: true,
+		StartedAt:            "01/01/2024 00:00:00",
+		EndsAt:               "12/31/2024 23:59:59",
+		IsContentAccessible:  true,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
@@ -138,7 +138,7 @@ func (suite *ApiTestSuite) handleApiAsx(w http.ResponseWriter, r *http.Request) 
 	if method == "catalog.container" && containerID == "123" {
 		response := models.AlbumMeta{
 			Response: &models.AlbArtResp{
-				ArtistName: "Test Artist",
+				ArtistName:  "Test Artist",
 				ContainerID: 123,
 				Tracks: []models.Track{
 					{TrackID: 1, SongTitle: "Test Song"},

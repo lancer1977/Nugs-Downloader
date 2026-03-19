@@ -3,12 +3,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/alexflint/go-arg"
-	"main/pkg/fsutil"
-	"main/pkg/logger"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/fsutil"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/logger"
 )
 
 const (
@@ -32,18 +33,18 @@ var (
 
 // Config represents the application configuration
 type Config struct {
-	Email         string `json:"email"`
-	Password      string `json:"password"`
-	Token         string `json:"token"`
-	Format        int    `json:"format"`
-	VideoFormat   int    `json:"videoFormat"`
-	OutPath       string `json:"outPath"`
-	WantRes       string
-	FfmpegNameStr string
-	Urls          []string
-	ForceVideo    bool
-	SkipVideos    bool
-	SkipChapters  bool
+	Email           string `json:"email"`
+	Password        string `json:"password"`
+	Token           string `json:"token"`
+	Format          int    `json:"format"`
+	VideoFormat     int    `json:"videoFormat"`
+	OutPath         string `json:"outPath"`
+	WantRes         string
+	FfmpegNameStr   string
+	Urls            []string
+	ForceVideo      bool
+	SkipVideos      bool
+	SkipChapters    bool
 	UseFfmpegEnvVar bool `json:"useFfmpegEnvVar"`
 }
 
@@ -95,11 +96,24 @@ func ParseCfg() (*Config, error) {
 		cfg.Token = strings.TrimPrefix(cfg.Token, "Bearer ")
 	}
 
-	// Use correct syntax based on cfg.UseFfmpegEnvVar value
-	if cfg.UseFfmpegEnvVar {
-		cfg.FfmpegNameStr = "ffmpeg"
-	} else {
-		cfg.FfmpegNameStr = "./ffmpeg"
+	// Default to "ffmpeg" in PATH.
+	cfg.FfmpegNameStr = "ffmpeg"
+
+	// If UseFfmpegEnvVar is specifically set to false, look for a local binary.
+	if !cfg.UseFfmpegEnvVar {
+		// Check if local ./ffmpeg exists
+		localFfmpeg := "./ffmpeg"
+		if _, err := os.Stat(localFfmpeg); err == nil {
+			cfg.FfmpegNameStr = localFfmpeg
+		} else {
+			// Try executable directory
+			if exePath, errExe := os.Executable(); errExe == nil {
+				exeDirFfmpeg := filepath.Join(filepath.Dir(exePath), "ffmpeg")
+				if _, err := os.Stat(exeDirFfmpeg); err == nil {
+					cfg.FfmpegNameStr = exeDirFfmpeg
+				}
+			}
+		}
 	}
 
 	// Process URLs
@@ -119,11 +133,97 @@ func ParseCfg() (*Config, error) {
 
 // readConfig reads configuration from config.json
 func readConfig() (*Config, error) {
-	data, err := ioutil.ReadFile("config.json")
-	if err != nil {
-		return nil, err
+	configFilename := "config.json"
+	var data []byte
+	var err error
+
+	// 1. Try ~/.nugs-downloader/config.json
+	homeDir, errHome := os.UserHomeDir()
+	if errHome == nil {
+		homeConfigPath := filepath.Join(homeDir, ".nugs-downloader", configFilename)
+		data, err = os.ReadFile(homeConfigPath)
+		if err == nil {
+			goto unmarshal
+		}
 	}
 
+	// 2. Try current working directory
+	data, err = os.ReadFile(configFilename)
+	if err == nil {
+		goto unmarshal
+	}
+
+	// 3. Try directory of executable
+	if exePath, errExe := os.Executable(); errExe == nil {
+		configPath := filepath.Join(filepath.Dir(exePath), configFilename)
+		data, err = os.ReadFile(configPath)
+		if err == nil {
+			goto unmarshal
+		}
+	}
+
+	// If not found anywhere, create a default one in ~/.nugs-downloader
+	if err != nil && os.IsNotExist(err) && errHome == nil {
+		homeConfigDir := filepath.Join(homeDir, ".nugs-downloader")
+		err = os.MkdirAll(homeConfigDir, 0755)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create config directory: %w", err)
+		}
+
+		defaultCfg := Config{
+			Format:          4,
+			VideoFormat:     5,
+			OutPath:         "Nugs downloads",
+			UseFfmpegEnvVar: true,
+		}
+
+		data, err = json.MarshalIndent(defaultCfg, "", "    ")
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal default config: %w", err)
+		}
+
+		homeConfigPath := filepath.Join(homeConfigDir, configFilename)
+		err = os.WriteFile(homeConfigPath, data, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write default config: %w", err)
+		}
+
+		// Create README.txt with explanations
+		readmeContent := `Nugs Downloader Configuration
+
+Format (Audio):
+1 = 16-bit / 44.1 kHz ALAC
+2 = 16-bit / 44.1 kHz FLAC
+3 = 24-bit / 48 kHz MQA
+4 = 360 Reality Audio / best available
+5 = 150 Kbps AAC
+
+VideoFormat:
+1 = 480p
+2 = 720p
+3 = 1080p
+4 = 1440p
+5 = 4K / best available
+
+useFfmpegEnvVar:
+true  = use ffmpeg from system PATH (default)
+false = use ffmpeg from binary/script directory
+
+outPath:
+Directory where downloads will be saved.
+`
+		readmePath := filepath.Join(homeConfigDir, "README.txt")
+		_ = os.WriteFile(readmePath, []byte(readmeContent), 0644)
+
+		// data is already populated, continue to unmarshal to return the struct
+		goto unmarshal
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("could not find or read %s: %w", configFilename, err)
+	}
+
+unmarshal:
 	var cfg Config
 	err = json.Unmarshal(data, &cfg)
 	if err != nil {

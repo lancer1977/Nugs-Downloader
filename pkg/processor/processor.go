@@ -8,19 +8,20 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 
-	"main/pkg/api"
-	"main/pkg/config"
-	"main/pkg/downloader"
-	"main/pkg/fsutil"
-	"main/pkg/logger"
-	"main/pkg/models"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/api"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/config"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/downloader"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/fsutil"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/logger"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/models"
 )
 
 const (
-	MaxFolderNameLen   = 100
+	MaxFolderNameLen    = 100
 	MaxVideoFilenameLen = 200
 )
 
@@ -81,19 +82,29 @@ func (p *Processor) ProcessAlbum(albumID string, streamParams *models.StreamPara
 		}
 	}
 
-	albumFolder := meta.ArtistName + " - " + strings.TrimRight(meta.ContainerInfo, " ")
-	fmt.Println(albumFolder)
+	artistFolder := downloader.Sanitise(meta.ArtistName)
+	albumFolder := downloader.Sanitise(strings.TrimRight(meta.ContainerInfo, " "))
 
+	if len(artistFolder) > MaxFolderNameLen {
+		artistFolder = artistFolder[:MaxFolderNameLen]
+	}
 	if len(albumFolder) > MaxFolderNameLen {
 		albumFolder = albumFolder[:MaxFolderNameLen]
-		fmt.Printf("Album folder name was chopped because it exceeds %d characters.", MaxFolderNameLen)
 	}
 
-	albumPath := filepath.Join(p.config.OutPath, downloader.Sanitise(albumFolder))
+	albumPath := filepath.Join(p.config.OutPath, artistFolder, albumFolder)
+	fmt.Println(filepath.Join(artistFolder, albumFolder))
+
 	err := fsutil.MakeDirs(albumPath)
 	if err != nil {
 		return models.NewDownloadError(models.ErrFileSystem, "Failed to create album folder", "Check write permissions for the download directory", false, err)
 	}
+
+	// Create README.md with album metadata
+	p.writeAlbumReadme(albumPath, meta)
+
+	// Download cover art for supported artists
+	p.downloadCoverArt(albumPath, meta.ArtistName, albumFolder)
 
 	// Clean up any leftover temp files from previous runs
 	downloader.CleanupTempFiles(albumPath)
@@ -241,11 +252,11 @@ func (p *Processor) ProcessPlaylist(plistId, legacyToken string, streamParams *m
 // ProcessVideo processes a video
 func (p *Processor) ProcessVideo(videoID, uguID string, streamParams *models.StreamParams, _meta *models.AlbArtResp, isLstream bool) error {
 	var (
-		chapsAvail bool
-		skuID      int
+		chapsAvail  bool
+		skuID       int
 		manifestUrl string
-		meta       *models.AlbArtResp
-		err        error
+		meta        *models.AlbArtResp
+		err         error
 	)
 
 	if _meta != nil {
@@ -263,13 +274,26 @@ func (p *Processor) ProcessVideo(videoID, uguID string, streamParams *models.Str
 		chapsAvail = !reflect.ValueOf(meta.VideoChapters).IsZero()
 	}
 
-	videoFname := meta.ArtistName + " - " + strings.TrimRight(meta.ContainerInfo, " ")
-	fmt.Println(videoFname)
+	artistFolder := downloader.Sanitise(meta.ArtistName)
+	videoFolder := downloader.Sanitise(strings.TrimRight(meta.ContainerInfo, " "))
 
-	if len(videoFname) > MaxVideoFilenameLen {
-		videoFname = videoFname[:MaxVideoFilenameLen]
-		fmt.Printf("Video filename was chopped because it exceeds %d characters.", MaxVideoFilenameLen)
+	if len(artistFolder) > MaxFolderNameLen {
+		artistFolder = artistFolder[:MaxFolderNameLen]
 	}
+	if len(videoFolder) > MaxFolderNameLen {
+		videoFolder = videoFolder[:MaxFolderNameLen]
+	}
+
+	videoPath := filepath.Join(p.config.OutPath, artistFolder, videoFolder)
+	fmt.Println(filepath.Join(artistFolder, videoFolder))
+
+	err = fsutil.MakeDirs(videoPath)
+	if err != nil {
+		fmt.Println("Failed to make video folder.")
+		return err
+	}
+
+	p.writeAlbumReadme(videoPath, meta)
 
 	if isLstream {
 		skuID = getLstreamSku(meta.ProductFormatList)
@@ -300,7 +324,8 @@ func (p *Processor) ProcessVideo(videoID, uguID string, streamParams *models.Str
 		return err
 	}
 
-	vidPathNoExt := filepath.Join(p.config.OutPath, downloader.Sanitise(videoFname+"_"+retRes))
+	vidFname := downloader.Sanitise(strings.TrimRight(meta.ContainerInfo, " ") + "_" + retRes)
+	vidPathNoExt := filepath.Join(videoPath, vidFname)
 	VidPathTs := vidPathNoExt + ".ts"
 	vidPath := vidPathNoExt + ".mp4"
 
@@ -391,7 +416,7 @@ func (p *Processor) ProcessTrackWithMetadata(folPath string, trackNum, trackTota
 	origWantFmt := p.config.Format
 	wantFmt := origWantFmt
 	var (
-		quals     []*models.Quality
+		quals      []*models.Quality
 		chosenQual *models.Quality
 	)
 
@@ -663,4 +688,124 @@ func resolveCatPlistId(plistUrl string) (string, error) {
 	}
 
 	return resolvedId, nil
+}
+
+// writeAlbumReadme writes a README.md file with album/video metadata
+func (p *Processor) writeAlbumReadme(folPath string, meta *models.AlbArtResp) {
+	readmePath := filepath.Join(folPath, "README.md")
+
+	// Skip if it already exists
+	if _, err := os.Stat(readmePath); err == nil {
+		return
+	}
+
+	content := fmt.Sprintf("# %s - %s\n\n", meta.ArtistName, meta.ContainerInfo)
+	content += fmt.Sprintf("Artist: %s\n", meta.ArtistName)
+	content += fmt.Sprintf("Show/Album: %s\n", meta.ContainerInfo)
+	content += fmt.Sprintf("ID: %d\n", meta.ContainerID)
+	content += fmt.Sprintf("Type: %s\n", meta.ContainerTypeStr)
+	content += fmt.Sprintf("Availability: %s\n\n", meta.AvailabilityTypeStr)
+
+	if len(meta.Tracks) > 0 || len(meta.Songs) > 0 {
+		content += "## Tracks\n\n"
+		tracks := meta.Tracks
+		if len(tracks) == 0 {
+			tracks = meta.Songs
+		}
+		for i, track := range tracks {
+			content += fmt.Sprintf("%d. %s\n", i+1, track.SongTitle)
+		}
+	}
+
+	err := os.WriteFile(readmePath, []byte(content), 0644)
+	if err != nil {
+		logger.GetLogger().WithError(err).Error("Failed to write README.md")
+	}
+}
+
+// downloadCoverArt attempts to download cover art for supported artists
+func (p *Processor) downloadCoverArt(folPath string, artistName, albumFolder string) {
+	// Cover art URL patterns for supported artists
+	// Pattern: https://api.livedownloads.com/images/shows/{artistlower}{YYMMDD}_01.jpg
+	
+	artistLower := strings.ToLower(artistName)
+	
+	// Map artist names to their URL format
+	artistUrlMap := map[string]string{
+		"phish": "phish",
+		"dead & company": "deadandcompany",
+		"dead and company": "deadandcompany",
+		"dave matthews band": "dmb",
+		"dmb": "dmb",
+		"widespread panic": "widespreadpanic",
+		"string cheese incident": "stringcheese",
+		"the string cheese incident": "stringcheese",
+	}
+	
+	urlArtist, supported := artistUrlMap[artistLower]
+	if !supported {
+		return
+	}
+	
+	// Extract date from album folder name
+	// Expected format: "MM_DD_YY Venue, City, ST" or "MM_DD_YYYY Venue, City, ST"
+	dateRegex := regexp.MustCompile(`^(\d{2})_(\d{2})_(\d{2,4})`)
+	matches := dateRegex.FindStringSubmatch(albumFolder)
+	if matches == nil {
+		return
+	}
+	
+	month := matches[1]
+	day := matches[2]
+	year := matches[3]
+	
+	// Convert 4-digit year to 2-digit for URL
+	if len(year) == 4 {
+		year = year[2:]
+	}
+	
+	// Build cover art URL
+	coverURL := fmt.Sprintf("https://api.livedownloads.com/images/shows/%s%s%s%s_01.jpg", 
+		urlArtist, year, month, day)
+	
+	coverPath := filepath.Join(folPath, "cover.jpg")
+	
+	// Check if cover already exists
+	if _, err := os.Stat(coverPath); err == nil {
+		return
+	}
+	
+	// Download cover art
+	resp, err := http.Get(coverURL)
+	if err != nil {
+		logger.GetLogger().WithError(err).Debug("Failed to download cover art")
+		return
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		logger.GetLogger().Debug("Cover art not available", "status", resp.StatusCode, "url", coverURL)
+		return
+	}
+	
+	// Read and write the image
+	data := make([]byte, 0)
+	buf := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			data = append(data, buf[:n]...)
+		}
+		if err != nil {
+			break
+		}
+	}
+	
+	err = os.WriteFile(coverPath, data, 0644)
+	if err != nil {
+		logger.GetLogger().WithError(err).Error("Failed to write cover art")
+		return
+	}
+	
+	fmt.Println("Downloaded cover art: cover.jpg")
 }

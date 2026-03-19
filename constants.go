@@ -2,18 +2,18 @@ package main
 
 const (
 	// Filename length limits
-	MaxFolderNameLen     = 120
-	MaxVideoFilenameLen  = 110
-	MaxTrackFilenameLen  = 255
+	MaxFolderNameLen    = 120
+	MaxVideoFilenameLen = 110
+	MaxTrackFilenameLen = 255
 
 	// File permissions (cross-platform)
 	DefaultFilePerms = 0644
 	DefaultDirPerms  = 0755
 
 	// API and network settings
-	RequestTimeout     = 30 // seconds
-	PaginationLimit    = 100
-	MaxRetries         = 3
+	RequestTimeout  = 30 // seconds
+	PaginationLimit = 100
+	MaxRetries      = 3
 
 	// Download settings
 	BufferSize = 32 * 1024 // 32KB buffer for I/O operations
@@ -22,10 +22,10 @@ const (
 	ProgressReportInterval = 1 // second between progress updates
 
 	// Quality format ranges
-	MinAudioFormat  = 1
-	MaxAudioFormat  = 5
-	MinVideoFormat  = 1
-	MaxVideoFormat  = 5
+	MinAudioFormat = 1
+	MaxAudioFormat = 5
+	MinVideoFormat = 1
+	MaxVideoFormat = 5
 
 	// Crypto buffer sizes
 	AESKeySize = 16 // bytes for AES key
@@ -37,11 +37,11 @@ const (
 	URLRegexCount = 11
 
 	// Quality format mappings
-	FormatALAC     = 1
-	FormatFLAC     = 2
-	FormatMQA      = 3
-	Format360RA    = 4
-	FormatAAC      = 5
+	FormatALAC  = 1
+	FormatFLAC  = 2
+	FormatMQA   = 3
+	Format360RA = 4
+	FormatAAC   = 5
 
 	// Video resolution mappings
 	Res480p  = "480"

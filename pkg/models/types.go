@@ -225,7 +225,7 @@ type Payload struct {
 }
 
 // URL patterns for different content types
-var RegexStrings = [11]string{
+var RegexStrings = [12]string{
 	`^https://play.nugs.net/release/(\d+)$`,
 	`^https://play.nugs.net/#/playlists/playlist/(\d+)$`,
 	`^https://play.nugs.net/library/playlist/(\d+)$`,
@@ -238,6 +238,7 @@ var RegexStrings = [11]string{
 	`^https://www.nugs.net/on/demandware.store/Sites-NugsNet-Site/d` +
 		`efault/(?:Stash-QueueVideo|NugsVideo-GetStashVideo)\?([a-zA-Z0-9=%&-]+$)`,
 	`^https://play.nugs.net/library/webcast/(\d+)$`,
+	`^https://play.nugs.net/playlist/([a-zA-Z0-9]+)$`,
 }
 
 // Quality mappings
@@ -293,7 +294,7 @@ func GetItemTypeName(mediaType int) string {
 	switch mediaType {
 	case 0:
 		return "album"
-	case 1, 2:
+	case 1, 2, 11:
 		return "playlist"
 	case 3:
 		return "catalog_playlist"

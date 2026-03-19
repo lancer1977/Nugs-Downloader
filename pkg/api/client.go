@@ -9,20 +9,20 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Sorrow446/Nugs-Downloader/pkg/models"
 	"github.com/grafov/m3u8"
-	"main/pkg/models"
 )
 
 const (
-	devKey         = "x7f54tgbdyc64y656thy47er4"
-	clientId       = "Eg7HuH873H65r5rt325UytR5429"
-	userAgent      = "NugsNet/3.26.724 (Android; 7.1.2; Asus; ASUS_Z01QD; Scale/2.0; en)"
-	userAgentTwo   = "nugsnetAndroid"
-	authUrl        = "https://id.nugs.net/connect/token"
-	streamApiBase  = "https://streamapi.nugs.net/"
-	subInfoUrl     = "https://subscriptions.nugs.net/api/v1/me/subscriptions"
-	userInfoUrl    = "https://id.nugs.net/connect/userinfo"
-	playerUrl      = "https://play.nugs.net/"
+	devKey        = "x7f54tgbdyc64y656thy47er4"
+	clientId      = "Eg7HuH873H65r5rt325UytR5429"
+	userAgent     = "NugsNet/3.26.724 (Android; 7.1.2; Asus; ASUS_Z01QD; Scale/2.0; en)"
+	userAgentTwo  = "nugsnetAndroid"
+	authUrl       = "https://id.nugs.net/connect/token"
+	streamApiBase = "https://streamapi.nugs.net/"
+	subInfoUrl    = "https://subscriptions.nugs.net/api/v1/me/subscriptions"
+	userInfoUrl   = "https://id.nugs.net/connect/userinfo"
+	playerUrl     = "https://play.nugs.net/"
 )
 
 var (

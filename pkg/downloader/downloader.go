@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	"main/pkg/api"
-	"main/pkg/config"
-	"main/pkg/fsutil"
-	"main/pkg/models"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/api"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/config"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/fsutil"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/models"
 
 	"github.com/dustin/go-humanize"
 	"github.com/grafov/m3u8"

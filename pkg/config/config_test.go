@@ -14,7 +14,7 @@ import (
 // TestSuite for config package
 type ConfigTestSuite struct {
 	suite.Suite
-	tempDir    string
+	tempDir      string
 	originalArgs []string
 }
 
@@ -191,8 +191,8 @@ func (suite *ConfigTestSuite) TestParseCfg_FfmpegPath_Unix() {
 // TestParseCfg_FfmpegEnvVar tests ffmpeg path when UseFfmpegEnvVar is true
 func (suite *ConfigTestSuite) TestParseCfg_FfmpegEnvVar() {
 	configData := Config{
-		Format:           2,
-		VideoFormat:      3,
+		Format:          2,
+		VideoFormat:     3,
 		UseFfmpegEnvVar: true,
 	}
 	suite.createConfigFile(configData)

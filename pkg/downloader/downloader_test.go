@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Sorrow446/Nugs-Downloader/pkg/api"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/config"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"main/pkg/api"
-	"main/pkg/config"
-	"main/pkg/models"
 )
 
 // TestSuite for downloader package

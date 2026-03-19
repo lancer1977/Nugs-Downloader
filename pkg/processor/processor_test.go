@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Sorrow446/Nugs-Downloader/pkg/api"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/config"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/downloader"
+	"github.com/Sorrow446/Nugs-Downloader/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"main/pkg/api"
-	"main/pkg/config"
-	"main/pkg/downloader"
-	"main/pkg/models"
 )
 
 // TestSuite for processor package
@@ -109,9 +109,9 @@ func (suite *ProcessorTestSuite) handleSubInfo(w http.ResponseWriter, r *http.Re
 			PlanID:      "plan-123",
 		},
 		LegacySubscriptionID: "sub-456",
-		StartedAt:           "01/01/2024 00:00:00",
-		EndsAt:             "12/31/2024 23:59:59",
-		IsContentAccessible: true,
+		StartedAt:            "01/01/2024 00:00:00",
+		EndsAt:               "12/31/2024 23:59:59",
+		IsContentAccessible:  true,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
@@ -123,8 +123,8 @@ func (suite *ProcessorTestSuite) handleApiAsx(w http.ResponseWriter, r *http.Req
 	if method == "catalog.container" {
 		response := models.AlbumMeta{
 			Response: &models.AlbArtResp{
-				ArtistName: "Test Artist",
-				ContainerID: 123,
+				ArtistName:    "Test Artist",
+				ContainerID:   123,
 				ContainerInfo: "Test Album",
 				Tracks: []models.Track{
 					{TrackID: 1, SongTitle: "Test Song"},
@@ -139,10 +139,10 @@ func (suite *ProcessorTestSuite) handleApiAsx(w http.ResponseWriter, r *http.Req
 				Response: &models.ArtistResp{
 					Containers: []*models.AlbArtResp{
 						{
-							ArtistName: "Test Artist",
-							ContainerID: 123,
-							ContainerInfo: "Test Album",
-							ContainerTypeStr: "Album",
+							ArtistName:          "Test Artist",
+							ContainerID:         123,
+							ContainerInfo:       "Test Album",
+							ContainerTypeStr:    "Album",
 							AvailabilityTypeStr: "AVAILABLE",
 						},
 					},
@@ -236,15 +236,15 @@ func (suite *ProcessorTestSuite) TestGetLstreamSku() {
 func (suite *ProcessorTestSuite) TestGetLstreamContainer() {
 	containers := []*models.AlbArtResp{
 		{
-			ContainerTypeStr: "Album",
+			ContainerTypeStr:    "Album",
 			AvailabilityTypeStr: "AVAILABLE",
 		},
 		{
-			ContainerTypeStr: "Show",
+			ContainerTypeStr:    "Show",
 			AvailabilityTypeStr: "AVAILABLE",
 		},
 		{
-			ContainerTypeStr: "Show",
+			ContainerTypeStr:    "Show",
 			AvailabilityTypeStr: "NOT_AVAILABLE",
 		},
 	}
@@ -261,14 +261,14 @@ func (suite *ProcessorTestSuite) TestParseLstreamMeta() {
 		Response: &models.ArtistResp{
 			Containers: []*models.AlbArtResp{
 				{
-					ArtistName: "Test Artist",
-					ContainerInfo: "Test Show",
-					ContainerID: 123,
-					ContainerTypeStr: "Show",
+					ArtistName:          "Test Artist",
+					ContainerInfo:       "Test Show",
+					ContainerID:         123,
+					ContainerTypeStr:    "Show",
 					AvailabilityTypeStr: "AVAILABLE",
-					VideoChapters: []interface{}{"chapter1", "chapter2"},
-					Products: []models.Product{{FormatStr: "VIDEO", SkuID: 456}},
-					ProductFormatList: []*models.ProductFormatList{{FormatStr: "LIVE HD VIDEO", SkuID: 789}},
+					VideoChapters:       []interface{}{"chapter1", "chapter2"},
+					Products:            []models.Product{{FormatStr: "VIDEO", SkuID: 456}},
+					ProductFormatList:   []*models.ProductFormatList{{FormatStr: "LIVE HD VIDEO", SkuID: 789}},
 				},
 			},
 		},
@@ -346,9 +346,9 @@ func (suite *ProcessorTestSuite) TestProcessPaidLstream() {
 func (suite *ProcessorTestSuite) TestProcessAlbum_NoTracks() {
 	// Create album metadata with no tracks
 	albumMeta := &models.AlbArtResp{
-		ArtistName: "Test Artist",
+		ArtistName:    "Test Artist",
 		ContainerInfo: "Test Album",
-		Tracks: []models.Track{}, // No tracks
+		Tracks:        []models.Track{}, // No tracks
 		Products: []models.Product{
 			{FormatStr: "AUDIO ONLY", SkuID: 123}, // Use AUDIO ONLY to avoid video download attempts
 		},
@@ -362,16 +362,16 @@ func (suite *ProcessorTestSuite) TestProcessAlbum_NoTracks() {
 	// Should return error about no tracks before attempting any downloads
 	err := suite.processor.ProcessAlbum("", streamParams, albumMeta)
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "release has no tracks")
+	assert.Contains(suite.T(), err.Error(), "Release has no tracks or videos")
 }
 
 // TestProcessAlbum_VideoOnly tests video-only album processing
 func (suite *ProcessorTestSuite) TestProcessAlbum_VideoOnly() {
 	// Create album metadata with video but no tracks
 	albumMeta := &models.AlbArtResp{
-		ArtistName: "Test Artist",
+		ArtistName:    "Test Artist",
 		ContainerInfo: "Test Video Album",
-		Tracks: []models.Track{}, // No tracks
+		Tracks:        []models.Track{}, // No tracks
 		Products: []models.Product{
 			{FormatStr: "VIDEO ON DEMAND", SkuID: 123},
 		},
@@ -457,7 +457,7 @@ func (suite *ProcessorTestSuite) TestConstants() {
 func (suite *ProcessorTestSuite) TestProcessTrackWithMetadata() {
 	// Create test album metadata
 	albumMeta := &models.AlbArtResp{
-		ArtistName:   "Test Artist",
+		ArtistName:    "Test Artist",
 		ContainerInfo: "Test Album",
 	}
 
@@ -499,6 +499,68 @@ func (suite *ProcessorTestSuite) TestProcessTrack_BackwardsCompatibility() {
 	err := suite.processor.ProcessTrack(suite.tempDir, 1, 1, &track, &models.StreamParams{})
 	// We expect this to fail due to network/API issues, but it should work structurally
 	assert.Error(suite.T(), err)
+}
+
+// TestProcessAlbum_FolderStructure tests that the correct folder structure is created
+func (suite *ProcessorTestSuite) TestProcessAlbum_FolderStructure() {
+	// Create album metadata
+	albumMeta := &models.AlbArtResp{
+		ArtistName:    "Test Artist",
+		ContainerInfo: "Test Album",
+		Songs: []models.Track{
+			{TrackID: 1, SongTitle: "Test Song"},
+		},
+		Products: []models.Product{
+			{FormatStr: "AUDIO ONLY", SkuID: 123},
+		},
+	}
+
+	streamParams := &models.StreamParams{
+		SubscriptionID: "sub-123",
+		UserID:         "user-456",
+	}
+
+	// We expect this to fail eventually due to stream metadata mocking limitations,
+	// but we can check if the directories were created.
+	suite.processor.ProcessAlbum("", streamParams, albumMeta)
+
+	artistDir := filepath.Join(suite.tempDir, "Test Artist")
+	albumDir := filepath.Join(artistDir, "Test Album")
+
+	assert.DirExists(suite.T(), artistDir)
+	assert.DirExists(suite.T(), albumDir)
+	assert.FileExists(suite.T(), filepath.Join(albumDir, "README.md"))
+}
+
+// TestWriteAlbumReadme tests the README.md generation
+func (suite *ProcessorTestSuite) TestWriteAlbumReadme() {
+	albumMeta := &models.AlbArtResp{
+		ArtistName:          "Test Artist",
+		ContainerInfo:       "Test Album",
+		ContainerID:         123,
+		ContainerTypeStr:    "Album",
+		AvailabilityTypeStr: "AVAILABLE",
+		Tracks: []models.Track{
+			{TrackID: 1, SongTitle: "Song One"},
+			{TrackID: 2, SongTitle: "Song Two"},
+		},
+	}
+
+	testDir := filepath.Join(suite.tempDir, "readme_test")
+	err := os.MkdirAll(testDir, 0755)
+	assert.NoError(suite.T(), err)
+
+	suite.processor.writeAlbumReadme(testDir, albumMeta)
+
+	readmePath := filepath.Join(testDir, "README.md")
+	assert.FileExists(suite.T(), readmePath)
+
+	content, err := os.ReadFile(readmePath)
+	assert.NoError(suite.T(), err)
+	assert.Contains(suite.T(), string(content), "# Test Artist - Test Album")
+	assert.Contains(suite.T(), string(content), "Artist: Test Artist")
+	assert.Contains(suite.T(), string(content), "1. Song One")
+	assert.Contains(suite.T(), string(content), "2. Song Two")
 }
 
 // Run the test suite
