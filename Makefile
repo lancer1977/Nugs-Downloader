@@ -16,7 +16,10 @@ test-race:
 	go test ./pkg/... -race
 
 # Build commands
-build:
+build-ui:
+	cd ui && npm run build
+
+build: build-ui
 	go build -o bin/nugs-downloader .
 
 build-all:

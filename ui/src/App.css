@@ -1,0 +1,247 @@
+:root {
+  --primary: #00a8ff;
+  --bg: #1e1e1e;
+  --surface: #2d2d2d;
+  --text: #ffffff;
+  --text-muted: #b0b0b0;
+  --border: #3d3d3d;
+  --success: #00d28a;
+  --error: #ff5e5e;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 2rem;
+}
+
+.library-list {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-top: 1rem;
+}
+
+.library-item {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 1rem;
+}
+
+button.secondary {
+  background-color: var(--surface);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+}
+
+.inspection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.inspection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: var(--bg);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.inspection-item.exists {
+  border-color: var(--success);
+  opacity: 0.8;
+}
+
+.inspection-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.type-badge {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.exists-badge {
+  color: var(--success);
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+button.small {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+.text-button {
+  background: none;
+  color: var(--text-muted);
+  text-decoration: underline;
+  padding: 0;
+  font-weight: normal;
+}
+
+.text-muted {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+h1, h2, h3 {
+  margin-top: 0;
+}
+
+.header {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.header h1 {
+  font-size: 1.5rem;
+  margin-bottom: 0;
+  color: var(--primary);
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+input, select, textarea {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+button {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+button:disabled {
+  background-color: var(--border);
+  cursor: not-allowed;
+}
+
+.progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.progress-item {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.progress-bar-bg {
+  height: 8px;
+  background-color: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--primary);
+  transition: width 0.3s ease-out;
+}
+
+.log-viewer {
+  background-color: #000;
+  color: #0f0;
+  font-family: 'Courier New', Courier, monospace;
+  padding: 1rem;
+  border-radius: 4px;
+  height: 300px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  border: 1px solid var(--border);
+}
+
+.status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.status-active { background-color: var(--primary); color: #fff; }
+.status-success { background-color: var(--success); color: #fff; }
+.status-error { background-color: var(--error); color: #fff; }
+
+.url-input {
+  min-height: 100px;
+  resize: vertical;
+}

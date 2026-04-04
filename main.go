@@ -11,24 +11,35 @@ import (
 	"github.com/Sorrow446/Nugs-Downloader/pkg/logger"
 	"github.com/Sorrow446/Nugs-Downloader/pkg/models"
 	"github.com/Sorrow446/Nugs-Downloader/pkg/processor"
-)
+	"github.com/Sorrow446/Nugs-Downloader/pkg/server"
+	)
 
-func main() {
+	func main() {
 	fmt.Println(`
- _____                ____                _           _
-|   | |_ _ ___ ___   |    \ ___ _ _ _ ___| |___ ___ _| |___ ___
-| | | | | | . |_ -|  |  |  | . | | | |   | | . | .'| . | -_|  _|
-|_|___|___|_  |___|  |____/|___|_____|_|_|_|___|__,|___|___|_|
-	  |___|`)
+	_____                ____                _           _
+	|   | |_ _ ___ ___   |    \ ___ _ _ _ ___| |___ ___ _| |___ ___
+	| | | | | | . |_ -|  |  |  | . | | | |   | | . | .'| . | -_|  _|
+	|_|___|___|_  |___|  |____/|___|_____|_|_|_|___|__,|___|___|_|
+	|___|`)
 
 	// Parse configuration
-	cfg, err := config.ParseCfg()
+	cfg, uiMode, port, err := config.ParseCfg()
 	if err != nil {
 		logger.GetLogger().WithError(err).Error("Failed to parse config/args")
 		os.Exit(1)
 	}
 
+	if uiMode {
+		srv := server.NewServer(cfg)
+		if err := srv.Start(port); err != nil {
+			logger.GetLogger().WithError(err).Error("Failed to start UI server")
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Create output directory
+
 	err = fsutil.MakeDirs(cfg.OutPath)
 	if err != nil {
 		logger.GetLogger().WithError(err).Error("Failed to make output folder")

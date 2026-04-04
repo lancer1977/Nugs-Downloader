@@ -34,14 +34,21 @@ type Processor struct {
 	apiClient  *api.Client
 	downloader *downloader.Downloader
 	config     *config.Config
+	reporter   models.ProgressReporter
 }
 
 // NewProcessor creates a new processor instance
 func NewProcessor(apiClient *api.Client, dl *downloader.Downloader, cfg *config.Config) *Processor {
+	return NewProcessorWithReporter(apiClient, dl, cfg, &models.NoopProgressReporter{})
+}
+
+// NewProcessorWithReporter creates a new processor instance with a progress reporter
+func NewProcessorWithReporter(apiClient *api.Client, dl *downloader.Downloader, cfg *config.Config, reporter models.ProgressReporter) *Processor {
 	return &Processor{
 		apiClient:  apiClient,
 		downloader: dl,
 		config:     cfg,
+		reporter:   reporter,
 	}
 }
 
@@ -116,6 +123,8 @@ func (p *Processor) ProcessAlbum(albumID string, streamParams *models.StreamPara
 	for trackNum, track := range tracks {
 		trackNum++
 		fmt.Printf("Processing track %d of %d: %s\n", trackNum, trackTotal, track.SongTitle)
+		p.reporter.UpdateOverallProgress(trackNum, trackTotal)
+		p.reporter.UpdateStatus(fmt.Sprintf("Downloading %s", track.SongTitle))
 
 		err := p.ProcessTrackWithMetadata(albumPath, trackNum, trackTotal, &track, streamParams, meta)
 		if err != nil {
@@ -233,6 +242,8 @@ func (p *Processor) ProcessPlaylist(plistId, legacyToken string, streamParams *m
 	trackTotal := len(meta.Items)
 	for trackNum, track := range meta.Items {
 		trackNum++
+		p.reporter.UpdateOverallProgress(trackNum, trackTotal)
+		p.reporter.UpdateStatus(fmt.Sprintf("Downloading %s", track.Track.SongTitle))
 		err := p.ProcessTrack(plistPath, trackNum, trackTotal, &track.Track, streamParams)
 		if err != nil {
 			context := map[string]interface{}{
@@ -359,6 +370,8 @@ func (p *Processor) ProcessVideo(videoID, uguID string, streamParams *models.Str
 		fmt.Printf("%.3f FPS, ", variant.FrameRate)
 	}
 	fmt.Printf("%d Kbps, %s (%s)\n", variant.Bandwidth/1000, retRes, variant.Resolution)
+	p.reporter.UpdateOverallProgress(1, 1)
+	p.reporter.UpdateStatus(fmt.Sprintf("Downloading video: %s", meta.ContainerInfo))
 
 	if isLstream {
 		err = p.downloader.DownloadLstream(VidPathTs, manBaseUrl, segUrls)

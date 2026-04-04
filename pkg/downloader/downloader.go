@@ -34,10 +34,16 @@ type Downloader struct {
 	apiClient     *api.Client
 	config        *config.Config
 	resumeManager *ResumeManager
+	reporter      models.ProgressReporter
 }
 
 // NewDownloader creates a new downloader instance
 func NewDownloader(apiClient *api.Client, cfg *config.Config) *Downloader {
+	return NewDownloaderWithReporter(apiClient, cfg, &models.NoopProgressReporter{})
+}
+
+// NewDownloaderWithReporter creates a new downloader instance with a progress reporter
+func NewDownloaderWithReporter(apiClient *api.Client, cfg *config.Config, reporter models.ProgressReporter) *Downloader {
 	// Initialize resume manager with a state directory in the user's home directory
 	stateDir := filepath.Join(os.Getenv("HOME"), ".nugs-downloader", "resume")
 	resumeManager := NewResumeManager(stateDir)
@@ -46,6 +52,7 @@ func NewDownloader(apiClient *api.Client, cfg *config.Config) *Downloader {
 		apiClient:     apiClient,
 		config:        cfg,
 		resumeManager: resumeManager,
+		reporter:      reporter,
 	}
 }
 
@@ -67,9 +74,10 @@ func (d *Downloader) DownloadTrack(trackPath, url string) error {
 
 	totalBytes := resp.ContentLength
 	counter := &models.WriteCounter{
-		Total:     totalBytes,
-		TotalStr:  humanize.Bytes(uint64(totalBytes)),
-		StartTime: time.Now().UnixMilli(),
+		Total:      totalBytes,
+		TotalStr:   humanize.Bytes(uint64(totalBytes)),
+		StartTime:  time.Now().UnixMilli(),
+		OnProgress: d.reporter.UpdateTrackProgress,
 	}
 
 	_, err = io.Copy(f, io.TeeReader(resp.Body, counter))
@@ -118,6 +126,7 @@ func (d *Downloader) DownloadVideo(videoPath, url string) error {
 		TotalStr:   humanize.Bytes(uint64(totalBytes)),
 		StartTime:  time.Now().UnixMilli(),
 		Downloaded: startByte,
+		OnProgress: d.reporter.UpdateTrackProgress,
 	}
 	_, err = io.Copy(f, io.TeeReader(do.Body, counter))
 	fmt.Println("")
@@ -961,9 +970,10 @@ func (d *Downloader) downloadTrackFresh(trackPath, url string, metadata *models.
 	}
 
 	counter := &models.WriteCounter{
-		Total:     totalBytes,
-		TotalStr:  humanize.Bytes(uint64(totalBytes)),
-		StartTime: time.Now().UnixMilli(),
+		Total:      totalBytes,
+		TotalStr:   humanize.Bytes(uint64(totalBytes)),
+		StartTime:  time.Now().UnixMilli(),
+		OnProgress: d.reporter.UpdateTrackProgress,
 	}
 
 	// Download with progress tracking and resume state updates
@@ -1115,6 +1125,7 @@ func (d *Downloader) resumeTrackDownload(trackPath, url string, resumeState *Res
 		TotalStr:   humanize.Bytes(uint64(resumeState.TotalSize)),
 		StartTime:  time.Now().UnixMilli(),
 		Downloaded: resumeState.DownloadedSize,
+		OnProgress: d.reporter.UpdateTrackProgress,
 	}
 
 	// Download remaining bytes with progress tracking and disk space monitoring
@@ -1289,9 +1300,10 @@ func (d *Downloader) SafeDownloadTrack(trackPath, url string, expectedSize int64
 	}
 
 	counter := &models.WriteCounter{
-		Total:     totalBytes,
-		TotalStr:  humanize.Bytes(uint64(totalBytes)),
-		StartTime: time.Now().UnixMilli(),
+		Total:      totalBytes,
+		TotalStr:   humanize.Bytes(uint64(totalBytes)),
+		StartTime:  time.Now().UnixMilli(),
+		OnProgress: d.reporter.UpdateTrackProgress,
 	}
 
 	// Copy with error handling

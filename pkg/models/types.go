@@ -28,6 +28,7 @@ type WriteCounter struct {
 	Downloaded int64
 	Percentage int
 	StartTime  int64
+	OnProgress func(downloaded int64, total int64)
 }
 
 // Write implements io.Writer interface for progress tracking
@@ -42,6 +43,10 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 		percentage = float64(wc.Downloaded) / float64(wc.Total) * float64(100)
 	}
 	wc.Percentage = int(percentage)
+
+	if wc.OnProgress != nil {
+		wc.OnProgress(wc.Downloaded, wc.Total)
+	}
 
 	toDivideBy := time.Now().UnixMilli() - wc.StartTime
 	if toDivideBy != 0 {

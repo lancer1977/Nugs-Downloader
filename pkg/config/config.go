@@ -57,13 +57,15 @@ type Args struct {
 	ForceVideo   bool     `arg:"--force-video" help:"Force video download"`
 	SkipVideos   bool     `arg:"--skip-videos" help:"Skip video downloads"`
 	SkipChapters bool     `arg:"--skip-chapters" help:"Skip chapter metadata"`
+	UI           bool     `arg:"--ui" help:"Start Web UI"`
+	Port         int      `arg:"--port" help:"Web UI port" default:"8080"`
 }
 
-// ParseCfg parses configuration from config.json and command line arguments
-func ParseCfg() (*Config, error) {
+// ParseCfg returns the configuration and a boolean indicating if UI mode is requested
+func ParseCfg() (*Config, bool, int, error) {
 	cfg, err := readConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
+		return nil, false, 0, fmt.Errorf("failed to read config: %w", err)
 	}
 
 	args := parseArgs()
@@ -76,10 +78,10 @@ func ParseCfg() (*Config, error) {
 
 	// Validate format ranges
 	if !(cfg.Format >= MinAudioFormat && cfg.Format <= MaxAudioFormat) {
-		return nil, fmt.Errorf("track format must be between %d and %d", MinAudioFormat, MaxAudioFormat)
+		return nil, false, 0, fmt.Errorf("track format must be between %d and %d", MinAudioFormat, MaxAudioFormat)
 	}
 	if !(cfg.VideoFormat >= MinVideoFormat && cfg.VideoFormat <= MaxVideoFormat) {
-		return nil, fmt.Errorf("video format must be between %d and %d", MinVideoFormat, MaxVideoFormat)
+		return nil, false, 0, fmt.Errorf("video format must be between %d and %d", MinVideoFormat, MaxVideoFormat)
 	}
 
 	// Set resolution and output path
@@ -120,7 +122,7 @@ func ParseCfg() (*Config, error) {
 	cfg.Urls, err = processUrls(args.Urls)
 	if err != nil {
 		logger.GetLogger().WithError(err).Error("Failed to process URLs")
-		return nil, err
+		return nil, false, 0, err
 	}
 
 	// Set flags
@@ -128,7 +130,7 @@ func ParseCfg() (*Config, error) {
 	cfg.SkipVideos = args.SkipVideos
 	cfg.SkipChapters = args.SkipChapters
 
-	return cfg, nil
+	return cfg, args.UI, args.Port, nil
 }
 
 // readConfig reads configuration from config.json
