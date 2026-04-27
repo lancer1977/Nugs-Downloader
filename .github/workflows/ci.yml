@@ -53,15 +53,15 @@ jobs:
         find . -name "temp_*" -type f -delete 2>/dev/null || true
 
     - name: Run unit tests (stable packages)
-      run: go test ./pkg/models ./pkg/logger ./pkg/fsutil ./pkg/config ./pkg/api -v -race
+      run: go test ./src/pkg/models ./src/pkg/logger ./src/pkg/fsutil ./src/pkg/config ./src/pkg/api -v -race
 
     - name: Run downloader tests
-      run: go test ./pkg/downloader -v -race
+      run: go test ./src/pkg/downloader -v -race
 
     - name: Run processor integration tests (may fail)
       run: |
         echo "Running integration tests (may fail due to HTTP mocking complexity)..."
-        if go test ./pkg/processor -v -race; then
+        if go test ./src/pkg/processor -v -race; then
           echo "✅ Integration tests passed"
           exit 0
         else
@@ -71,7 +71,7 @@ jobs:
         fi
 
     - name: Generate coverage (exclude integration tests)
-      run: go test ./pkg/models ./pkg/logger ./pkg/fsutil ./pkg/config ./pkg/api ./pkg/downloader -coverprofile=coverage.out
+      run: go test ./src/pkg/models ./src/pkg/logger ./src/pkg/fsutil ./src/pkg/config ./src/pkg/api ./src/pkg/downloader -coverprofile=coverage.out
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -98,7 +98,7 @@ jobs:
         sudo apt-get install -y ffmpeg
 
     - name: Build
-      run: go build -o Nugs-Downloader -v .
+      run: go build -o Nugs-Downloader -v ./src
 
     - name: Test build
       run: ./Nugs-Downloader --help

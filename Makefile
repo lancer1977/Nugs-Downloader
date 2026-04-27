@@ -2,31 +2,31 @@
 
 # Test commands
 test:
-	go test ./pkg/...
+	go test ./src/pkg/...
 
 test-verbose:
-	go test ./pkg/... -v
+	go test ./src/pkg/... -v
 
 test-coverage:
-	go test ./pkg/... -coverprofile=coverage.out
+	go test ./src/pkg/... -coverprofile=coverage.out
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
 test-race:
-	go test ./pkg/... -race
+	go test ./src/pkg/... -race
 
 # Build commands
 build-ui:
 	cd ui && npm run build
 
 build: build-ui
-	go build -o bin/nugs-downloader .
+	go build -o bin/nugs-downloader ./src
 
 build-all:
-	GOOS=linux GOARCH=amd64 go build -o bin/nugs-downloader-linux-amd64 .
-	GOOS=windows GOARCH=amd64 go build -o bin/nugs-downloader-windows-amd64.exe .
-	GOOS=darwin GOARCH=amd64 go build -o bin/nugs-downloader-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build -o bin/nugs-downloader-darwin-arm64 .
+	GOOS=linux GOARCH=amd64 go build -o bin/nugs-downloader-linux-amd64 ./src
+	GOOS=windows GOARCH=amd64 go build -o bin/nugs-downloader-windows-amd64.exe ./src
+	GOOS=darwin GOARCH=amd64 go build -o bin/nugs-downloader-darwin-amd64 ./src
+	GOOS=darwin GOARCH=arm64 go build -o bin/nugs-downloader-darwin-arm64 ./src
 
 # Development
 clean:
@@ -36,7 +36,7 @@ clean:
 
 # CI/CD
 ci-test:
-	go test ./pkg/... -v -race -coverprofile=coverage.out
+	go test ./src/pkg/... -v -race -coverprofile=coverage.out
 
 # Linting (requires golangci-lint)
 lint:

@@ -1,0 +1,43 @@
+@page "/jobs/{JobId:guid}"
+@using NugsDownloader.App.Abstractions
+@using NugsDownloader.Domain.Entities
+@inject IJobRepository JobRepository
+@inject IFileStateRepository FileStateRepository
+
+<h1>Job Details</h1>
+
+@if (_job is null)
+{
+    <p>Job not found.</p>
+}
+else
+{
+    <p><strong>Provider:</strong> @_job.ProviderId</p>
+    <p><strong>Source:</strong> @_job.SourceUrl</p>
+    <p><strong>Status:</strong> @_job.Status</p>
+    <p><strong>Output:</strong> @_job.OutputPath</p>
+
+    <h2>Files</h2>
+    <ul>
+        @foreach (var state in _fileStates)
+        {
+            <li>@state.FilePath - @state.Status - @state.Kind</li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter] public Guid JobId { get; set; }
+
+    private DownloadJob? _job;
+    private IReadOnlyList<FileState> _fileStates = Array.Empty<FileState>();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _job = await JobRepository.GetAsync(JobId, CancellationToken.None);
+        if (_job is not null)
+        {
+            _fileStates = await FileStateRepository.GetByJobAsync(JobId, CancellationToken.None);
+        }
+    }
+}

@@ -1,25 +1,27 @@
 ---
 title: Feature Index
-status: done
-owner: @DreadBreadcrumb
+status: active
+owner: @codex
 priority: high
-complexity: 1
-created: 2026-03-22
-updated: 2026-03-22
+complexity: 2
+created: 2026-04-26
+updated: 2026-04-26
 tags: [documentation, Nugs-Downloader]
 ---
 
 # Feature Index
 
-This directory documents all features and roadmap items. All state is now tracked in front matter.
+This folder tracks the current application surfaces and the cleanup work around them.
 
-## Core Features (Existing Functionality)
+## Current Structure
 
-- [Go Module](./go-module.md)
-- [Sub-module: pkg](./sub-module-pkg.md)
-- [Sub-module: nugs-downloader](./sub-module-nugs-downloader.md)
+- [Backend Layout](./backend-layout.md)
+- [Web UI](./web-ui.md)
+- [Config and CLI](./config-and-cli.md)
 
+## Cleanup Checklist
 
-## Beyond the App
-
-- Shared utilities and local development tools.
+- [x] Move the Go entrypoint into `src/`
+- [x] Point the UI build output at `src/ui/dist`
+- [x] Update the repo README to match the split layout
+- [x] Replace placeholder feature pages with focused docs

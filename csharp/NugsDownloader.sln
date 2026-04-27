@@ -1,0 +1,42 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugsDownloader.Web", "NugsDownloader.Web\NugsDownloader.Web.csproj", "{6F7A4F6C-5D2E-4C82-8F25-5E6D1E6E5D00}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugsDownloader.App", "NugsDownloader.App\NugsDownloader.App.csproj", "{8D1F4A3B-7E37-4E6A-9A9D-2D8C6F0B5001}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugsDownloader.Domain", "NugsDownloader.Domain\NugsDownloader.Domain.csproj", "{4E0E9A3D-4F3F-4F58-9A3A-8E0F2A6D9002}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugsDownloader.Infrastructure", "NugsDownloader.Infrastructure\NugsDownloader.Infrastructure.csproj", "{1A9AFB5E-4E5E-4C2A-9D4C-4B7A4B7F9003}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugsDownloader.Tests", "tests\NugsDownloader.Tests\NugsDownloader.Tests.csproj", "{B25D2E85-5F80-4B76-8EAA-3CF7C7D70004}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6F7A4F6C-5D2E-4C82-8F25-5E6D1E6E5D00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F7A4F6C-5D2E-4C82-8F25-5E6D1E6E5D00}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F7A4F6C-5D2E-4C82-8F25-5E6D1E6E5D00}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F7A4F6C-5D2E-4C82-8F25-5E6D1E6E5D00}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8D1F4A3B-7E37-4E6A-9A9D-2D8C6F0B5001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D1F4A3B-7E37-4E6A-9A9D-2D8C6F0B5001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D1F4A3B-7E37-4E6A-9A9D-2D8C6F0B5001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D1F4A3B-7E37-4E6A-9A9D-2D8C6F0B5001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4E0E9A3D-4F3F-4F58-9A3A-8E0F2A6D9002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E0E9A3D-4F3F-4F58-9A3A-8E0F2A6D9002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E0E9A3D-4F3F-4F58-9A3A-8E0F2A6D9002}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E0E9A3D-4F3F-4F58-9A3A-8E0F2A6D9002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1A9AFB5E-4E5E-4C2A-9D4C-4B7A4B7F9003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A9AFB5E-4E5E-4C2A-9D4C-4B7A4B7F9003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A9AFB5E-4E5E-4C2A-9D4C-4B7A4B7F9003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A9AFB5E-4E5E-4C2A-9D4C-4B7A4B7F9003}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B25D2E85-5F80-4B76-8EAA-3CF7C7D70004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B25D2E85-5F80-4B76-8EAA-3CF7C7D70004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B25D2E85-5F80-4B76-8EAA-3CF7C7D70004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B25D2E85-5F80-4B76-8EAA-3CF7C7D70004}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

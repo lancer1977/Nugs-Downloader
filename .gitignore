@@ -1,6 +1,8 @@
 # Build outputs
 bin/
 *.exe
+src/ui/dist/
+ui/dist/
 
 # Generated conflict copies
 pkg/models/*.sync-conflict-*.go
