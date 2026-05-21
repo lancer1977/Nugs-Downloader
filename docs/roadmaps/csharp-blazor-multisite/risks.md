@@ -15,7 +15,7 @@ tags: [roadmap, risks, csharp, blazor, multisite]
 
 - Site auth flows may differ enough that provider abstraction becomes leaky.
 - Resume logic and file-state persistence may need more careful design than the current Go app.
-- Browser-based UI credential capture raises storage and security requirements.
+- Browser-based UI credential capture raises storage and security requirements; the current JSON secret vault protects values with ASP.NET Core Data Protection keys persisted under the state directory.
 - Live site changes may require frequent provider updates.
 
 ## Migration Risks
@@ -26,7 +26,6 @@ tags: [roadmap, risks, csharp, blazor, multisite]
 
 ## Operational Risks
 
-- Credential handling must be encrypted or OS-backed where possible.
+- Credential handling must remain encrypted or OS-backed where possible; the JSON vault is acceptable for the current LAN-only slice but should still be revisited before broader exposure.
 - The app should avoid logging secrets, URLs with sensitive params, or raw auth payloads.
 - Multi-site support can become a maintenance burden without clear provider boundaries.
-

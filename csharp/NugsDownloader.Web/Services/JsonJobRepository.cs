@@ -5,7 +5,7 @@ namespace NugsDownloader.Web.Services;
 
 public sealed class JsonJobRepository : JsonFileRepository, IJobRepository
 {
-    public JsonJobRepository() : base(JsonStorePaths.Jobs) { }
+    public JsonJobRepository(JsonStorePaths paths) : base(paths.Jobs) { }
 
     public async Task<DownloadJob?> GetAsync(Guid id, CancellationToken ct)
     {

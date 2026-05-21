@@ -1,0 +1,55 @@
+services:
+  nugs-downloader-web:
+    image: ${NUGS_DOWNLOADER_IMAGE:-ghcr.io/lancer1977/nugs-downloader-web:main}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      NugsDownloader__StateDirectory: /app/state
+      NugsDownloader__DownloadDirectory: /downloads
+    ports:
+      - target: 8080
+        published: ${NUGS_DOWNLOADER_PORT:-5107}
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - nugs-downloader-state:/app/state
+      - nugs-downloader-downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 3m
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        monitor: 120s
+        failure_action: rollback
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.nugs-downloader.rule=Host(`${NUGS_DOWNLOADER_TRAEFIK_HOST:-nugs.polyhydragames.com}`)"
+        - "traefik.http.routers.nugs-downloader.entrypoints=websecure"
+        - "traefik.http.routers.nugs-downloader.tls=true"
+        - "traefik.http.services.nugs-downloader.loadbalancer.server.port=8080"
+        - "traefik.http.middlewares.nugs-downloader-internal.ipwhitelist.sourcerange=${NUGS_DOWNLOADER_ALLOWED_SOURCE_RANGES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
+        - "traefik.http.routers.nugs-downloader.middlewares=nugs-downloader-internal"
+        - "traefik.docker.network=${TRAEFIK_PUBLIC_NETWORK:-traefik-public}"
+    networks:
+      - traefik-public
+
+networks:
+  traefik-public:
+    external: true
+    name: ${TRAEFIK_PUBLIC_NETWORK:-traefik-public}
+
+volumes:
+  nugs-downloader-state:
+  nugs-downloader-downloads:

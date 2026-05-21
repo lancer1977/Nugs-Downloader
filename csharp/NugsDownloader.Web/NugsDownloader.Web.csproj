@@ -9,4 +9,7 @@
     <ProjectReference Include="..\NugsDownloader.Domain\NugsDownloader.Domain.csproj" />
     <ProjectReference Include="..\NugsDownloader.Infrastructure\NugsDownloader.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MudBlazor" Version="9.4.0" />
+  </ItemGroup>
 </Project>

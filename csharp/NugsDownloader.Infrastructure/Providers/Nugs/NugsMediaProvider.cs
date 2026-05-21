@@ -145,7 +145,7 @@ public sealed class NugsMediaProvider : INugsProvider
                     var id = ExtractNumericId(segments);
                     if (!string.IsNullOrWhiteSpace(id))
                     {
-                        var playlist = await _apiClient.GetPlaylistMetaAsync(id, string.Empty, string.Empty, false, ct);
+                        var playlist = await _apiClient.GetPlaylistMetaAsync(id, string.Empty, string.Empty, true, ct);
                         if (playlist?.Response is not null)
                         {
                             title = playlist.Response.PlayListName;

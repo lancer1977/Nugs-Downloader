@@ -1,0 +1,78 @@
+@page "/file-state"
+@using NugsDownloader.App.Abstractions
+@using NugsDownloader.Domain.Entities
+@inject IJobRepository JobRepository
+@inject IFileStateRepository FileStateRepository
+
+<h1>File State</h1>
+<p>Inspect the current file state recorded for download jobs.</p>
+
+<div>
+    <a href="/">Dashboard</a> |
+    <a href="/queue">Queue</a> |
+    <a href="/login">Login</a> |
+    <a href="/provider-settings">Provider Settings</a>
+</div>
+
+<button type="button" @onclick="ReloadAsync">Refresh</button>
+
+<h2>Summary</h2>
+<p><strong>Jobs:</strong> @_jobs.Count</p>
+<p><strong>Files:</strong> @_fileStates.Count</p>
+
+@if (_fileStates.Count == 0)
+{
+    <p>No file state has been recorded yet.</p>
+}
+else
+{
+    <ul>
+        @foreach (var state in _fileStates)
+        {
+            <li>@state.JobId - @state.FilePath - @state.Status - @state.Kind</li>
+        }
+    </ul>
+}
+
+<h2>Jobs</h2>
+@if (_jobs.Count == 0)
+{
+    <p>No jobs have been queued yet.</p>
+}
+else
+{
+    <ul>
+        @foreach (var job in _jobs)
+        {
+            <li>
+                <a href="@($"/jobs/{job.Id}")">@job.DisplayName</a>
+                - @job.Status
+                - @job.OutputPath
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private IReadOnlyList<DownloadJob> _jobs = Array.Empty<DownloadJob>();
+    private IReadOnlyList<FileState> _fileStates = Array.Empty<FileState>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _jobs = await JobRepository.ListAsync(CancellationToken.None);
+
+        var fileStates = new List<FileState>();
+        foreach (var job in _jobs)
+        {
+            var states = await FileStateRepository.GetByJobAsync(job.Id, CancellationToken.None);
+            fileStates.AddRange(states);
+        }
+
+        _fileStates = fileStates;
+    }
+}

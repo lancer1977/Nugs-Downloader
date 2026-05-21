@@ -5,13 +5,16 @@ namespace NugsDownloader.Web.Services;
 
 public sealed class JsonCredentialStore : JsonFileRepository, ICredentialStore
 {
-    public JsonCredentialStore() : base(JsonStorePaths.Credentials) { }
+    public JsonCredentialStore(JsonStorePaths paths) : base(paths.Credentials) { }
 
     public async Task<ProviderAccount?> GetAsync(string providerId, string label, CancellationToken ct)
     {
         var accounts = await ReadAsync(new List<ProviderAccount>(), ct);
         return accounts.FirstOrDefault(account => account.ProviderId == providerId && account.Label == label);
     }
+
+    public async Task<IReadOnlyList<ProviderAccount>> ListAsync(CancellationToken ct) =>
+        await ReadAsync(new List<ProviderAccount>(), ct);
 
     public async Task SaveAsync(ProviderAccount account, CancellationToken ct)
     {

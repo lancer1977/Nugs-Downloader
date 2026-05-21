@@ -5,7 +5,7 @@ owner: @codex
 priority: high
 complexity: 5
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-12
 tags: [roadmap, phases, csharp, blazor, multisite]
 ---
 
@@ -35,7 +35,7 @@ tags: [roadmap, phases, csharp, blazor, multisite]
 - [ ] Port current Nugs download flows end to end
 - [ ] Port media selection, naming, and resume behavior
 - [ ] Port metadata and file organization behavior
-- [ ] Add parity tests against the Go feature set
+- [x] Add parity tests against the Go feature set
 - [ ] Validate the app against the current Go feature set
 
 ## Phase 4: LivePhish Support

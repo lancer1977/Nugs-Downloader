@@ -1,6 +1,8 @@
 @page "/jobs/{JobId:guid}"
 @using NugsDownloader.App.Abstractions
+@using NugsDownloader.App.UseCases
 @using NugsDownloader.Domain.Entities
+@inject IDownloadWorkflow DownloadWorkflow
 @inject IJobRepository JobRepository
 @inject IFileStateRepository FileStateRepository
 
@@ -17,6 +19,23 @@ else
     <p><strong>Status:</strong> @_job.Status</p>
     <p><strong>Output:</strong> @_job.OutputPath</p>
 
+    <h2>Discovery Result</h2>
+    <p><strong>Title:</strong> @_job.DisplayName</p>
+    <p><strong>Canonical Source:</strong> @_job.SourceUrl</p>
+    <p><strong>Expected Files:</strong> @_fileStates.Count</p>
+    <p><strong>Audio:</strong> @_fileStates.Count(state => state.Kind == FileKind.Audio)</p>
+    <p><strong>Video:</strong> @_fileStates.Count(state => state.Kind == FileKind.Video)</p>
+
+    <div>
+        <button type="button" @onclick="ResumeAsync">Resume</button>
+        <button type="button" @onclick="RetryAsync">Retry</button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p>@_message</p>
+    }
+
     <h2>Files</h2>
     <ul>
         @foreach (var state in _fileStates)
@@ -31,6 +50,7 @@ else
 
     private DownloadJob? _job;
     private IReadOnlyList<FileState> _fileStates = Array.Empty<FileState>();
+    private string? _message;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -39,5 +59,19 @@ else
         {
             _fileStates = await FileStateRepository.GetByJobAsync(JobId, CancellationToken.None);
         }
+    }
+
+    private async Task ResumeAsync()
+    {
+        var result = await DownloadWorkflow.ResumeAsync(JobId, CancellationToken.None);
+        _message = $"{result.Status}: {result.Message}";
+        await OnParametersSetAsync();
+    }
+
+    private async Task RetryAsync()
+    {
+        var result = await DownloadWorkflow.RetryAsync(JobId, CancellationToken.None);
+        _message = $"{result.Status}: {result.Message}";
+        await OnParametersSetAsync();
     }
 }

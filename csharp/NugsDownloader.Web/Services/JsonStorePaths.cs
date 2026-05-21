@@ -1,10 +1,22 @@
+using Microsoft.Extensions.Options;
+using NugsDownloader.Web.Options;
+
 namespace NugsDownloader.Web.Services;
 
-public static class JsonStorePaths
+public sealed class JsonStorePaths
 {
-    public static readonly string BaseDirectory = Path.Combine(AppContext.BaseDirectory, "state");
-    public static readonly string Jobs = Path.Combine(BaseDirectory, "jobs.json");
-    public static readonly string FileStates = Path.Combine(BaseDirectory, "file-states.json");
-    public static readonly string Credentials = Path.Combine(BaseDirectory, "credentials.json");
-    public static readonly string Secrets = Path.Combine(BaseDirectory, "secrets.json");
+    public JsonStorePaths(IOptions<NugsDownloaderStorageOptions> options)
+    {
+        BaseDirectory = options.Value.GetStateDirectory();
+        Jobs = Path.Combine(BaseDirectory, "jobs.json");
+        FileStates = Path.Combine(BaseDirectory, "file-states.json");
+        Credentials = Path.Combine(BaseDirectory, "credentials.json");
+        Secrets = Path.Combine(BaseDirectory, "secrets.json");
+    }
+
+    public string BaseDirectory { get; }
+    public string Jobs { get; }
+    public string FileStates { get; }
+    public string Credentials { get; }
+    public string Secrets { get; }
 }

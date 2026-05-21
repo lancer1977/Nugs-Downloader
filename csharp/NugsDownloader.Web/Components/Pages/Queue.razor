@@ -1,0 +1,260 @@
+@page "/queue"
+@using NugsDownloader.App.Abstractions
+@using NugsDownloader.App.UseCases
+@using NugsDownloader.Domain.Entities
+@using NugsDownloader.Domain.Providers
+@using NugsDownloader.Domain.ValueObjects
+@using Microsoft.Extensions.Options
+@using NugsDownloader.Web.Options
+@inject IDownloadWorkflow DownloadWorkflow
+@inject ICredentialStore CredentialStore
+@inject IProviderCatalog ProviderCatalog
+@inject IJobRepository JobRepository
+@inject IFileStateRepository FileStateRepository
+@inject ISecretVault SecretVault
+@inject IOptions<NugsDownloaderStorageOptions> StorageOptions
+
+<h1>Queue</h1>
+<p>Create a download job from a Nugs URL and a stored or manual account.</p>
+
+<div>
+    <a href="/">Dashboard</a> |
+    <a href="/login">Login</a> |
+    <a href="/file-state">File State</a> |
+    <a href="/provider-settings">Provider Settings</a>
+</div>
+
+<div>
+    <label>Provider</label>
+    <select @bind="_model.ProviderId">
+        @foreach (var provider in _providers)
+        {
+            <option value="@provider.Id">@provider.DisplayName</option>
+        }
+    </select>
+</div>
+
+@if (_selectedProvider is not null)
+{
+    <h2>Capability Hints</h2>
+    <p>@DescribeCapabilities(_selectedProvider.Capabilities)</p>
+    <ul>
+        <li>@GetCapabilityHint(_selectedProvider.Capabilities.SupportsResume, "Resume is available.", "Resume is not available.")</li>
+        <li>@GetCapabilityHint(_selectedProvider.Capabilities.SupportsAudio, "Audio downloads are available.", "Audio downloads are not available.")</li>
+        <li>@GetCapabilityHint(_selectedProvider.Capabilities.SupportsVideo, "Video downloads are available.", "Video downloads are not available.")</li>
+    </ul>
+}
+
+@if (GetAccounts(_model.ProviderId).Count > 0)
+{
+    <div>
+        <label>Stored Account</label>
+        <select @bind="_model.StoredAccountId">
+            <option value="">Manual credentials</option>
+            @foreach (var account in GetAccounts(_model.ProviderId))
+            {
+                <option value="@account.Id.ToString()">@account.Label (@account.Username)</option>
+            }
+        </select>
+    </div>
+}
+else
+{
+    <p>No stored account is available for this provider yet. Use Login first, or enter credentials below.</p>
+}
+
+<EditForm Model="_model" OnValidSubmit="StartDownloadAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div>
+        <label>Source URL</label>
+        <InputText @bind-Value="_model.SourceUrl" />
+    </div>
+
+    <div>
+        <label>Username</label>
+        <InputText @bind-Value="_model.Username" />
+    </div>
+
+    <div>
+        <label>Password</label>
+        <InputText type="password" @bind-Value="_model.Password" />
+    </div>
+
+    <div>
+        <label>Token</label>
+        <InputText @bind-Value="_model.Token" />
+    </div>
+
+    <div>
+        <label>Label</label>
+        <InputText @bind-Value="_model.Label" />
+    </div>
+
+    <div>
+        <label>Output Root</label>
+        <InputText @bind-Value="_model.OutputRoot" />
+    </div>
+
+    <div>
+        <label>Audio Format</label>
+        <InputSelect @bind-Value="_model.AudioFormat">
+            <option value="">Auto</option>
+            <option value="alac">ALAC</option>
+            <option value="flac">FLAC</option>
+            <option value="mqa">MQA</option>
+            <option value="aac">AAC</option>
+        </InputSelect>
+    </div>
+
+    <div>
+        <label>Video Resolution</label>
+        <InputSelect @bind-Value="_model.VideoResolution">
+            <option value="">Auto</option>
+            <option value="480p">480p</option>
+            <option value="720p">720p</option>
+            <option value="1080p">1080p</option>
+            <option value="1440p">1440p</option>
+            <option value="4k">4K</option>
+        </InputSelect>
+    </div>
+
+    <div>
+        <label>
+            <InputCheckbox @bind-Value="_model.ForceVideo" />
+            Force video
+        </label>
+    </div>
+
+    <button type="submit">Start Download</button>
+</EditForm>
+
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <p>@_message</p>
+}
+
+<h2>Recent Jobs</h2>
+@if (_jobs.Count == 0)
+{
+    <p>No jobs have been queued yet.</p>
+}
+else
+{
+    <ul>
+        @foreach (var job in _jobs.Take(5))
+        {
+            <li><a href="@($"/jobs/{job.Id}")">@job.ProviderId - @job.DisplayName - @job.Status</a></li>
+        }
+    </ul>
+}
+
+@code {
+    private readonly DownloadFormModel _model = new();
+    private string? _message;
+    private IReadOnlyList<DownloadJob> _jobs = Array.Empty<DownloadJob>();
+    private IReadOnlyList<IMediaProvider> _providers = Array.Empty<IMediaProvider>();
+    private IReadOnlyList<ProviderAccount> _accounts = Array.Empty<ProviderAccount>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _providers = ProviderCatalog.GetProviders();
+        _model.ProviderId = _providers.FirstOrDefault()?.Id ?? string.Empty;
+        _model.OutputRoot = StorageOptions.Value.GetDownloadDirectory();
+        _accounts = await CredentialStore.ListAsync(CancellationToken.None);
+        _model.StoredAccountId = GetAccounts(_model.ProviderId).FirstOrDefault()?.Id.ToString() ?? string.Empty;
+        await ReloadAsync();
+    }
+
+    private IMediaProvider? _selectedProvider => ProviderCatalog.FindById(_model.ProviderId);
+
+    private async Task StartDownloadAsync()
+    {
+        if (!Uri.TryCreate(_model.SourceUrl, UriKind.Absolute, out var sourceUrl))
+        {
+            _message = "Enter a valid absolute URL.";
+            return;
+        }
+
+        var prefs = new DownloadPreferences(
+            PreferredAudioFormat: _model.AudioFormat,
+            PreferredVideoResolution: _model.VideoResolution,
+            SkipVideos: false,
+            SkipChapters: false,
+            ForceVideo: _model.ForceVideo,
+            OutputRoot: _model.OutputRoot,
+            WriteMetadata: true,
+            WriteArtwork: true);
+
+        var credentials = await ResolveCredentialsAsync(CancellationToken.None);
+        if (credentials is null)
+        {
+            return;
+        }
+
+        var request = new StartDownloadRequest(null, _model.ProviderId, sourceUrl, credentials, prefs);
+        var result = await DownloadWorkflow.StartAsync(request, new Progress<DownloadProgress>(), CancellationToken.None);
+        _message = $"{result.Status}: {result.Message}";
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _jobs = await JobRepository.ListAsync(CancellationToken.None);
+    }
+
+    private async Task<Credentials?> ResolveCredentialsAsync(CancellationToken ct)
+    {
+        if (Guid.TryParse(_model.StoredAccountId, out var accountId))
+        {
+            var account = GetAccounts(_model.ProviderId).FirstOrDefault(candidate => candidate.Id == accountId);
+            if (account is null)
+            {
+                _message = "Select a stored account that belongs to the selected provider.";
+                return null;
+            }
+
+            var secret = await SecretVault.GetAsync(account.SecretRef, ct);
+            if (string.IsNullOrWhiteSpace(secret))
+            {
+                _message = $"Stored account '{account.Label}' is missing its secret. Re-authenticate from Login.";
+                return null;
+            }
+
+            return new Credentials(account.Username, secret, null, account.Label);
+        }
+
+        return new Credentials(_model.Username, _model.Password, _model.Token, _model.Label);
+    }
+
+    private static string DescribeCapabilities(ProviderCapabilities capabilities)
+    {
+        var formats = capabilities.SupportedFormats.Count > 0 ? string.Join(", ", capabilities.SupportedFormats) : "any format";
+        var resolutions = capabilities.SupportedResolutions.Count > 0 ? string.Join(", ", capabilities.SupportedResolutions) : "any resolution";
+        var password = GetCapabilityHint(capabilities.SupportsPasswordLogin, "password login supported", "password login not supported");
+        var token = GetCapabilityHint(capabilities.SupportsTokens, "token login supported", "token login not supported");
+
+        return $"{password}. {token}. Formats: {formats}. Resolutions: {resolutions}.";
+    }
+
+    private static string GetCapabilityHint(bool supported, string yes, string no) => supported ? yes : no;
+
+    private IReadOnlyList<ProviderAccount> GetAccounts(string providerId) =>
+        _accounts.Where(account => account.ProviderId == providerId).ToArray();
+
+    private sealed class DownloadFormModel
+    {
+        public string SourceUrl { get; set; } = string.Empty;
+        public string StoredAccountId { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string Token { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public string ProviderId { get; set; } = string.Empty;
+        public string OutputRoot { get; set; } = "Downloads";
+        public string? AudioFormat { get; set; }
+        public string? VideoResolution { get; set; }
+        public bool ForceVideo { get; set; }
+    }
+}

@@ -56,84 +56,195 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             null,
             request.Preferences.OutputRoot);
         await _jobRepository.SaveAsync(pendingJob, ct);
+        var currentJob = pendingJob;
 
-        var auth = await provider.AuthenticateAsync(request.Credentials, ct);
-        if (!auth.Success)
+        try
         {
-            return new StartDownloadResult(
+            var auth = await provider.AuthenticateAsync(request.Credentials, ct);
+            if (!auth.Success)
+            {
+                var message = auth.Message ?? "Authentication failed.";
+                await _jobRepository.SaveAsync(currentJob with
+                {
+                    Status = DownloadJobStatus.Failed,
+                    CompletedAt = DateTimeOffset.UtcNow,
+                    ErrorMessage = message
+                }, CancellationToken.None);
+
+                return new StartDownloadResult(jobId, provider.Id, "AuthFailed", message);
+            }
+
+            var discovery = await provider.DiscoverAsync(request.SourceUrl, ct);
+
+            var job = new DownloadJob(
                 jobId,
                 provider.Id,
-                "AuthFailed",
-                auth.Message ?? "Authentication failed.");
-        }
-
-        var discovery = await provider.DiscoverAsync(request.SourceUrl, ct);
-
-        var job = new DownloadJob(
-            jobId,
-            provider.Id,
-            request.SourceUrl,
-            discovery.Title,
-            DownloadJobStatus.Running,
-            startedAt,
-            startedAt,
-            null,
-            null,
-            request.Preferences.OutputRoot);
-
-        await _jobRepository.SaveAsync(job, ct);
-
-        if (auth.SecretRef is not null)
-        {
-            var account = new ProviderAccount(
-                Guid.NewGuid(),
-                provider.Id,
-                auth.DisplayName ?? provider.DisplayName,
-                request.Credentials.Username ?? string.Empty,
-                auth.SecretRef,
-                AuthenticationState.Valid,
-                DateTimeOffset.UtcNow);
-
-            await _credentialStore.SaveAsync(account, ct);
-        }
-        else if (!string.IsNullOrWhiteSpace(request.Credentials.Password) || !string.IsNullOrWhiteSpace(request.Credentials.Token))
-        {
-            var secretValue = request.Credentials.Token ?? request.Credentials.Password ?? string.Empty;
-            var secretRef = await _secretVault.StoreAsync(provider.Id, request.Credentials.Label ?? request.Credentials.Username ?? "default", secretValue, ct);
-            var account = new ProviderAccount(
-                Guid.NewGuid(),
-                provider.Id,
-                auth.DisplayName ?? provider.DisplayName,
-                request.Credentials.Username ?? string.Empty,
-                secretRef,
-                AuthenticationState.Valid,
-                DateTimeOffset.UtcNow);
-
-            await _credentialStore.SaveAsync(account, ct);
-        }
-
-        var plan = await provider.BuildDownloadPlanAsync(discovery, request.Preferences, ct);
-        await provider.ExecuteDownloadAsync(plan, progress, ct);
-
-        await _fileStateRepository.SaveAsync(
-            new FileState(
-                Guid.NewGuid(),
-                jobId,
-                Path.Combine(request.Preferences.OutputRoot, discovery.Title),
-                FileKind.Metadata,
-                FileStatus.Complete,
-                0,
-                0,
+                request.SourceUrl,
+                discovery.Title,
+                DownloadJobStatus.Running,
+                startedAt,
+                startedAt,
                 null,
-                DateTimeOffset.UtcNow),
-            ct);
+                null,
+                request.Preferences.OutputRoot);
+
+            await _jobRepository.SaveAsync(job, ct);
+            currentJob = job;
+
+            var secret = FirstNonEmpty(request.Credentials.Password, request.Credentials.Token, auth.SecretRef);
+            if (!string.IsNullOrWhiteSpace(secret))
+            {
+                var label = FirstNonEmpty(request.Credentials.Label, auth.DisplayName, request.Credentials.Username, provider.DisplayName) ?? "default";
+                var secretRef = await _secretVault.StoreAsync(provider.Id, label, secret, ct);
+                var existing = await _credentialStore.GetAsync(provider.Id, label, ct);
+                var account = new ProviderAccount(
+                    existing?.Id ?? Guid.NewGuid(),
+                    provider.Id,
+                    label,
+                    request.Credentials.Username ?? string.Empty,
+                    secretRef,
+                    AuthenticationState.Valid,
+                    DateTimeOffset.UtcNow);
+
+                await _credentialStore.SaveAsync(account, ct);
+            }
+
+            var plan = await provider.BuildDownloadPlanAsync(discovery, request.Preferences, ct);
+            foreach (var expectedFile in plan.ExpectedFiles)
+            {
+                await _fileStateRepository.SaveAsync(expectedFile with
+                {
+                    JobId = jobId,
+                    Status = FileStatus.Partial
+                }, ct);
+            }
+
+            await provider.ExecuteDownloadAsync(plan, progress, ct);
+
+            foreach (var expectedFile in plan.ExpectedFiles)
+            {
+                await _fileStateRepository.SaveAsync(expectedFile with
+                {
+                    JobId = jobId,
+                    Status = FileStatus.Complete,
+                    LastVerifiedAt = DateTimeOffset.UtcNow
+                }, ct);
+            }
+
+            await _jobRepository.SaveAsync(job with
+            {
+                Status = DownloadJobStatus.Completed,
+                CompletedAt = DateTimeOffset.UtcNow
+            }, ct);
+
+            return new StartDownloadResult(jobId, provider.Id, "Completed", $"Processed {discovery.Title}");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await _jobRepository.SaveAsync(currentJob with
+            {
+                Status = DownloadJobStatus.Cancelled,
+                CompletedAt = DateTimeOffset.UtcNow,
+                ErrorMessage = "Download was cancelled."
+            }, CancellationToken.None);
+
+            return new StartDownloadResult(jobId, provider.Id, "Cancelled", "Download was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            await _jobRepository.SaveAsync(currentJob with
+            {
+                Status = DownloadJobStatus.Failed,
+                CompletedAt = DateTimeOffset.UtcNow,
+                ErrorMessage = ex.Message
+            }, CancellationToken.None);
+
+            return new StartDownloadResult(jobId, provider.Id, "Failed", ex.Message);
+        }
+    }
+
+    public async Task<StartDownloadResult> ResumeAsync(Guid jobId, CancellationToken ct)
+    {
+        var job = await _jobRepository.GetAsync(jobId, ct);
+        if (job is null)
+        {
+            return new StartDownloadResult(jobId, string.Empty, "NotFound", "Job not found.");
+        }
+
+        var fileStates = await _fileStateRepository.GetByJobAsync(jobId, ct);
+        var partialStates = fileStates.Where(state => state.Status == FileStatus.Partial).ToArray();
+        var resumableCount = 0;
+
+        foreach (var state in partialStates)
+        {
+            var status = ResolveResumeStatus(state);
+            if (status == FileStatus.Partial)
+            {
+                resumableCount++;
+            }
+
+            if (status != state.Status)
+            {
+                await _fileStateRepository.SaveAsync(state with
+                {
+                    Status = status,
+                    LastVerifiedAt = DateTimeOffset.UtcNow
+                }, ct);
+            }
+        }
 
         await _jobRepository.SaveAsync(job with
         {
-            Status = DownloadJobStatus.Completed,
-            CompletedAt = DateTimeOffset.UtcNow
+            Status = resumableCount > 0 ? DownloadJobStatus.Running : DownloadJobStatus.Ready,
+            ErrorMessage = null
         }, ct);
 
-        return new StartDownloadResult(jobId, provider.Id, "Completed", $"Processed {discovery.Title}");
+        var message = resumableCount > 0
+            ? $"Resume prepared for {resumableCount} partial file(s)."
+            : "No resumable partial files were found; job is ready to retry.";
+
+        return new StartDownloadResult(jobId, job.ProviderId, "ResumePrepared", message);
     }
+
+    public async Task<StartDownloadResult> RetryAsync(Guid jobId, CancellationToken ct)
+    {
+        var job = await _jobRepository.GetAsync(jobId, ct);
+        if (job is null)
+        {
+            return new StartDownloadResult(jobId, string.Empty, "NotFound", "Job not found.");
+        }
+
+        await _jobRepository.SaveAsync(job with
+        {
+            Status = DownloadJobStatus.Ready,
+            CompletedAt = null,
+            ErrorMessage = null
+        }, ct);
+
+        return new StartDownloadResult(jobId, job.ProviderId, "RetryQueued", "Job is ready to retry.");
+    }
+
+    private static FileStatus ResolveResumeStatus(FileState state)
+    {
+        if (!File.Exists(state.FilePath))
+        {
+            return FileStatus.Missing;
+        }
+
+        var actualSize = new FileInfo(state.FilePath).Length;
+        if (state.ExpectedSize > 0 && actualSize != state.ActualSize)
+        {
+            return FileStatus.Stale;
+        }
+
+        if (state.LastVerifiedAt is not null && state.LastVerifiedAt < DateTimeOffset.UtcNow.AddHours(-24))
+        {
+            return FileStatus.Stale;
+        }
+
+        return FileStatus.Partial;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 }

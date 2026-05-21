@@ -82,7 +82,7 @@ public class NugsMediaProviderTests
         using var client = new HttpClient(new FakeHttpHandler(async request =>
         {
             var url = request.RequestUri?.AbsoluteUri ?? string.Empty;
-            if (url.Contains("method=catalog.containersAll"))
+            if (url.Contains("method=catalog.containersAll") && url.Contains("startOffset=1"))
             {
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
@@ -101,6 +101,20 @@ public class NugsMediaProviderTests
                                     }
                                 }
                             }
+                        }
+                    })
+                };
+            }
+
+            if (url.Contains("method=catalog.containersAll"))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        response = new
+                        {
+                            containers = Array.Empty<object>()
                         }
                     })
                 };
@@ -179,54 +193,84 @@ public class NugsMediaProviderTests
     }
 
     [Fact]
-    public async Task BuildDownloadPlanAsync_MapsExpectedFiles()
+    public async Task BuildDownloadPlanAsync_UsesAlbumNamingAndOutputRoot()
     {
-        var provider = new NugsMediaProvider(new NugsApiClient(new HttpClient(new FakeHttpHandler(_ =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))))));
-        var discovery = new NugsDownloader.Domain.ValueObjects.MediaDiscoveryResult(
-            "nugs",
-            new Uri("https://play.nugs.net/release/123"),
-            new Uri("https://play.nugs.net/release/123"),
+        var provider = CreateProvider();
+        var discovery = CreateDiscovery(
             "Album",
-            "Artist",
             new[]
             {
-                new NugsDownloader.Domain.ValueObjects.MediaItem("1", "Song", "audio", 0, new Dictionary<string, string>()),
-                new NugsDownloader.Domain.ValueObjects.MediaItem("2", "Video", "video", 1, new Dictionary<string, string>())
-            },
-            true,
-            true,
-            new Dictionary<string, string>());
+                new NugsDownloader.Domain.ValueObjects.MediaItem("1", "Song 1", "audio", 0, new Dictionary<string, string>())
+            });
 
-        var plan = await provider.BuildDownloadPlanAsync(discovery, new NugsDownloader.Domain.ValueObjects.DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true), CancellationToken.None);
+        var preferences = new NugsDownloader.Domain.ValueObjects.DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true);
+        var plan = await provider.BuildDownloadPlanAsync(discovery, preferences, CancellationToken.None);
 
         Assert.Equal("nugs", plan.ProviderId);
-        Assert.Equal(4, plan.ExpectedFiles.Count);
-        Assert.Contains(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Video);
-        Assert.Contains(plan.Items, item => item.Metadata["selectedAudioFormat"] == "flac");
-        Assert.Contains(plan.ExpectedFiles, file => file.FilePath.Contains("flac", StringComparison.OrdinalIgnoreCase));
-        Assert.StartsWith("Downloads", plan.ExpectedFiles[0].FilePath);
+        Assert.Equal("Downloads", plan.OutputRoot);
+        Assert.Single(plan.Items);
+        Assert.Equal("flac", plan.Items[0].Metadata["selectedAudioFormat"]);
+        Assert.Equal("1", plan.Items[0].Metadata["trackNumber"]);
+        Assert.Equal(Path.Combine("Downloads", "Album", "01", "Song 1", "flac"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Audio).FilePath);
+        Assert.Equal(Path.Combine("Downloads", "Album", "metadata.nfo"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Metadata).FilePath);
+        Assert.Equal(Path.Combine("Downloads", "Album", "cover.jpg"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Artwork).FilePath);
     }
 
     [Fact]
-    public async Task BuildDownloadPlanAsync_SkipsVideoItemsWhenRequested()
+    public async Task BuildDownloadPlanAsync_UsesPlaylistNamingAndOutputRoot()
     {
-        var provider = new NugsMediaProvider(new NugsApiClient(new HttpClient(new FakeHttpHandler(_ =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))))));
-        var discovery = new NugsDownloader.Domain.ValueObjects.MediaDiscoveryResult(
-            "nugs",
-            new Uri("https://play.nugs.net/release/123"),
-            new Uri("https://play.nugs.net/release/123"),
+        var provider = CreateProvider();
+        var discovery = CreateDiscovery(
+            "Playlist",
+            new[]
+            {
+                new NugsDownloader.Domain.ValueObjects.MediaItem("20", "Playlist Song", "audio", 0, new Dictionary<string, string>())
+            });
+
+        var preferences = new NugsDownloader.Domain.ValueObjects.DownloadPreferences("aac", "1080p", false, false, false, "Library", true, true);
+        var plan = await provider.BuildDownloadPlanAsync(discovery, preferences, CancellationToken.None);
+
+        var audioFile = Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Audio);
+        Assert.Equal(Path.Combine("Library", "Playlist", "01", "Playlist Song", "aac"), audioFile.FilePath);
+        Assert.Equal("aac", plan.Items[0].Metadata["selectedAudioFormat"]);
+        Assert.Equal("1", plan.Items[0].Metadata["trackNumber"]);
+        Assert.All(plan.ExpectedFiles, file => Assert.StartsWith("Library", file.FilePath));
+    }
+
+    [Fact]
+    public async Task BuildDownloadPlanAsync_UsesVideoNamingAndOutputRoot()
+    {
+        var provider = CreateProvider();
+        var discovery = CreateDiscovery(
+            "Concert",
+            new[]
+            {
+                new NugsDownloader.Domain.ValueObjects.MediaItem("v1", "Main Feature", "video", 0, new Dictionary<string, string>())
+            },
+            hasVideo: true,
+            hasAudio: false);
+
+        var preferences = new NugsDownloader.Domain.ValueObjects.DownloadPreferences("flac", "4k", false, false, false, "Videos", true, true);
+        var plan = await provider.BuildDownloadPlanAsync(discovery, preferences, CancellationToken.None);
+
+        var videoFile = Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Video);
+        Assert.Equal(Path.Combine("Videos", "Concert", "01", "Main Feature", "4k"), videoFile.FilePath);
+        Assert.Equal("4k", plan.Items[0].Metadata["selectedVideoResolution"]);
+        Assert.Equal("1", plan.Items[0].Metadata["trackNumber"]);
+    }
+
+    [Fact]
+    public async Task BuildDownloadPlanAsync_SkipsVideoAndLivestreamItemsWhenRequested()
+    {
+        var provider = CreateProvider();
+        var discovery = CreateDiscovery(
             "Album",
-            "Artist",
             new[]
             {
                 new NugsDownloader.Domain.ValueObjects.MediaItem("1", "Song", "audio", 0, new Dictionary<string, string>()),
-                new NugsDownloader.Domain.ValueObjects.MediaItem("2", "Video", "video", 1, new Dictionary<string, string>())
-            },
-            true,
-            true,
-            new Dictionary<string, string>());
+                new NugsDownloader.Domain.ValueObjects.MediaItem("2", "Video", "video", 1, new Dictionary<string, string>()),
+                new NugsDownloader.Domain.ValueObjects.MediaItem("3", "Watch", "livestream", 2, new Dictionary<string, string>())
+            });
 
         var plan = await provider.BuildDownloadPlanAsync(discovery, new NugsDownloader.Domain.ValueObjects.DownloadPreferences("flac", "1080p", true, false, false, "Downloads", true, true), CancellationToken.None);
 
@@ -237,29 +281,23 @@ public class NugsMediaProviderTests
     }
 
     [Fact]
-    public async Task BuildDownloadPlanAsync_PrefersVideoItemsWhenForced()
+    public async Task BuildDownloadPlanAsync_ForcesVideoOrLivestreamSelectionWhenRequested()
     {
-        var provider = new NugsMediaProvider(new NugsApiClient(new HttpClient(new FakeHttpHandler(_ =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))))));
-        var discovery = new NugsDownloader.Domain.ValueObjects.MediaDiscoveryResult(
-            "nugs",
-            new Uri("https://play.nugs.net/release/123"),
-            new Uri("https://play.nugs.net/release/123"),
-            "Album",
-            "Artist",
+        var provider = CreateProvider();
+        var discovery = CreateDiscovery(
+            "Watch Party",
             new[]
             {
                 new NugsDownloader.Domain.ValueObjects.MediaItem("1", "Song", "audio", 0, new Dictionary<string, string>()),
-                new NugsDownloader.Domain.ValueObjects.MediaItem("2", "Video", "video", 1, new Dictionary<string, string>())
+                new NugsDownloader.Domain.ValueObjects.MediaItem("2", "Live Set", "livestream", 1, new Dictionary<string, string>())
             },
-            true,
-            true,
-            new Dictionary<string, string>());
+            hasVideo: true,
+            hasAudio: true);
 
         var plan = await provider.BuildDownloadPlanAsync(discovery, new NugsDownloader.Domain.ValueObjects.DownloadPreferences("flac", "4k", false, false, true, "Downloads", true, true), CancellationToken.None);
 
         Assert.Single(plan.Items);
-        Assert.All(plan.Items, item => Assert.Equal("video", item.Kind));
+        Assert.Equal("livestream", plan.Items[0].Kind);
         Assert.Equal("4k", plan.Items[0].Metadata["selectedVideoResolution"]);
         Assert.Equal(3, plan.ExpectedFiles.Count);
         Assert.Contains(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Video);
@@ -308,11 +346,11 @@ public class NugsMediaProviderTests
             Array.Empty<NugsDownloader.Domain.Entities.FileState>(),
             null);
 
-        var reports = new List<NugsDownloader.Domain.ValueObjects.DownloadProgress>();
-        await provider.ExecuteDownloadAsync(plan, new Progress<NugsDownloader.Domain.ValueObjects.DownloadProgress>(reports.Add), CancellationToken.None);
+        var progress = new RecordingProgress<NugsDownloader.Domain.ValueObjects.DownloadProgress>();
+        await provider.ExecuteDownloadAsync(plan, progress, CancellationToken.None);
 
-        Assert.Single(reports);
-        Assert.Equal("nugs", reports[0].ProviderId);
+        Assert.Single(progress.Reports);
+        Assert.Equal("nugs", progress.Reports[0].ProviderId);
     }
 
     [Fact]
@@ -350,5 +388,37 @@ public class NugsMediaProviderTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             _handler(request);
+    }
+
+    private sealed class RecordingProgress<T> : IProgress<T>
+    {
+        public List<T> Reports { get; } = new();
+
+        public void Report(T value) => Reports.Add(value);
+    }
+
+    private static NugsMediaProvider CreateProvider() =>
+        new(new NugsApiClient(new HttpClient(new FakeHttpHandler(_ =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))))));
+
+    private static NugsDownloader.Domain.ValueObjects.MediaDiscoveryResult CreateDiscovery(
+        string title,
+        IReadOnlyList<NugsDownloader.Domain.ValueObjects.MediaItem> items,
+        bool? hasVideo = null,
+        bool? hasAudio = null)
+    {
+        var actualHasVideo = hasVideo ?? items.Any(item => item.Kind is "video" or "livestream");
+        var actualHasAudio = hasAudio ?? items.Any(item => item.Kind == "audio");
+
+        return new NugsDownloader.Domain.ValueObjects.MediaDiscoveryResult(
+            "nugs",
+            new Uri("https://play.nugs.net/release/123"),
+            new Uri("https://play.nugs.net/release/123"),
+            title,
+            "Artist",
+            items,
+            actualHasVideo,
+            actualHasAudio,
+            new Dictionary<string, string>());
     }
 }

@@ -18,6 +18,7 @@ This folder tracks the current application surfaces and the cleanup work around 
 - [Backend Layout](./backend-layout.md)
 - [Web UI](./web-ui.md)
 - [Config and CLI](./config-and-cli.md)
+- [Portainer Stack](./portainer-stack/README.md)
 
 ## Cleanup Checklist
 

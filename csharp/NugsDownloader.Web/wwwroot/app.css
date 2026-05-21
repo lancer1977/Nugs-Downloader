@@ -1,0 +1,199 @@
+:root {
+    color-scheme: dark;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #101418;
+}
+
+html,
+body {
+    min-height: 100%;
+    margin: 0;
+    background:
+        linear-gradient(180deg, rgba(45, 212, 191, 0.08), transparent 34rem),
+        #101418;
+    color: #f8fafc;
+}
+
+body {
+    font-size: 15px;
+}
+
+.nugs-shell {
+    min-height: 100vh;
+    background: transparent;
+}
+
+.nugs-appbar {
+    border-bottom: 1px solid #24303d;
+}
+
+.nugs-main {
+    min-height: 100vh;
+    padding-top: 56px;
+}
+
+.nugs-content {
+    width: min(1180px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 28px 0 48px;
+}
+
+h1,
+h2,
+h3 {
+    letter-spacing: 0;
+}
+
+h1 {
+    margin: 0 0 8px;
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+h2 {
+    margin: 28px 0 12px;
+    font-size: 1.15rem;
+    font-weight: 650;
+    color: #e2e8f0;
+}
+
+p {
+    color: #b8c4d4;
+}
+
+a {
+    color: #5eead4;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #99f6e4;
+    text-decoration: underline;
+}
+
+.nugs-content > div:has(> a) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin: 18px 0 22px;
+    color: transparent;
+}
+
+.nugs-content > div:has(> a) a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1px solid #2f3a47;
+    border-radius: 6px;
+    background: #1b222b;
+    color: #dbeafe;
+    font-weight: 600;
+}
+
+ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+li {
+    margin: 10px 0;
+    padding: 14px 16px;
+    border: 1px solid #2f3a47;
+    border-radius: 6px;
+    background: #1b222b;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+form {
+    display: grid;
+    gap: 14px;
+    max-width: 720px;
+    margin-top: 18px;
+    padding: 18px;
+    border: 1px solid #2f3a47;
+    border-radius: 6px;
+    background: #1b222b;
+}
+
+form > div,
+.nugs-content > div:has(> label) {
+    display: grid;
+    gap: 6px;
+}
+
+label {
+    color: #d4dee9;
+    font-weight: 600;
+}
+
+input,
+select {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    border: 1px solid #3d4a5c;
+    border-radius: 6px;
+    background: #101820;
+    color: #f8fafc;
+    outline: none;
+}
+
+input:focus,
+select:focus {
+    border-color: #2dd4bf;
+    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.18);
+}
+
+input[type="checkbox"] {
+    width: 18px;
+    min-height: 18px;
+    accent-color: #2dd4bf;
+}
+
+button,
+.mud-button-root {
+    border-radius: 6px;
+}
+
+form button,
+.nugs-content > button,
+.nugs-content button[type="button"] {
+    width: fit-content;
+    min-height: 40px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 6px;
+    background: #2dd4bf;
+    color: #06201d;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+form button:hover,
+.nugs-content > button:hover,
+.nugs-content button[type="button"]:hover {
+    background: #5eead4;
+}
+
+strong {
+    color: #f8fafc;
+}
+
+@media (max-width: 720px) {
+    .nugs-content {
+        width: min(100vw - 20px, 1180px);
+        padding-top: 20px;
+    }
+
+    .nugs-appbar .mud-button-root {
+        min-width: 0;
+        padding-inline: 8px;
+    }
+
+    h1 {
+        font-size: 1.6rem;
+    }
+}

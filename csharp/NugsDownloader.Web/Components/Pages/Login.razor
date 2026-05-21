@@ -1,0 +1,194 @@
+@page "/login"
+@using NugsDownloader.App.Abstractions
+@using NugsDownloader.Domain.Entities
+@using NugsDownloader.Domain.Providers
+@using NugsDownloader.Domain.ValueObjects
+@inject ICredentialStore CredentialStore
+@inject IProviderCatalog ProviderCatalog
+@inject ISecretVault SecretVault
+
+<h1>Login</h1>
+<p>Authenticate a provider and inspect the returned account label and secret reference.</p>
+
+<div>
+    <a href="/">Dashboard</a> |
+    <a href="/queue">Queue</a> |
+    <a href="/file-state">File State</a> |
+    <a href="/provider-settings">Provider Settings</a>
+</div>
+
+<div>
+    <label>Provider</label>
+    <select @bind="_model.ProviderId">
+        @foreach (var provider in _providers)
+        {
+            <option value="@provider.Id">@provider.DisplayName</option>
+        }
+    </select>
+</div>
+
+@if (_selectedProvider is not null)
+{
+    <h2>Capability Hints</h2>
+    <p>@DescribeCapabilities(_selectedProvider.Capabilities)</p>
+    <ul>
+        <li>@GetCapabilityHint(_selectedProvider.Capabilities.SupportsPasswordLogin, "Password login is supported.", "Password login is not supported.")</li>
+        <li>@GetCapabilityHint(_selectedProvider.Capabilities.SupportsTokens, "Token login is supported.", "Token login is not supported.")</li>
+    </ul>
+}
+
+<EditForm Model="_model" OnValidSubmit="AuthenticateAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div>
+        <label>Username</label>
+        <InputText @bind-Value="_model.Username" />
+    </div>
+
+    <div>
+        <label>Password</label>
+        <InputText type="password" @bind-Value="_model.Password" />
+    </div>
+
+    <div>
+        <label>Token</label>
+        <InputText @bind-Value="_model.Token" />
+    </div>
+
+    <div>
+        <label>Label</label>
+        <InputText @bind-Value="_model.Label" />
+    </div>
+
+    <button type="submit">Authenticate</button>
+</EditForm>
+
+@if (GetAccounts(_model.ProviderId).Count > 0)
+{
+    <h2>Stored Accounts</h2>
+    <ul>
+        @foreach (var account in GetAccounts(_model.ProviderId))
+        {
+            <li>@account.Label - @account.Username - @account.AuthState</li>
+        }
+    </ul>
+}
+
+@if (_authResult is not null)
+{
+    <h2>Auth Result</h2>
+    <p><strong>Status:</strong> @(_authResult.Success ? "Success" : "Failed")</p>
+    <p><strong>Display:</strong> @_authResult.DisplayName</p>
+    <p><strong>Secret:</strong> @(_savedSecretRef is null ? "Not saved" : "Saved")</p>
+    <p><strong>Expires:</strong> @_authResult.ExpiresAt</p>
+    <p><strong>Message:</strong> @_authResult.Message</p>
+}
+
+@code {
+    private readonly LoginFormModel _model = new();
+    private IReadOnlyList<IMediaProvider> _providers = Array.Empty<IMediaProvider>();
+    private IReadOnlyList<ProviderAccount> _accounts = Array.Empty<ProviderAccount>();
+    private AuthResult? _authResult;
+    private string? _savedSecretRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _providers = ProviderCatalog.GetProviders();
+        _model.ProviderId = _providers.FirstOrDefault()?.Id ?? string.Empty;
+        await ReloadAccountsAsync();
+        ApplyFirstStoredAccount();
+    }
+
+    private IMediaProvider? _selectedProvider => ProviderCatalog.FindById(_model.ProviderId);
+
+    private async Task AuthenticateAsync()
+    {
+        _savedSecretRef = null;
+        if (_selectedProvider is null)
+        {
+            _authResult = new AuthResult(false, _model.ProviderId, null, null, null, "Select a provider first.");
+            return;
+        }
+
+        var credentials = new Credentials(_model.Username, _model.Password, _model.Token, _model.Label);
+        _authResult = await _selectedProvider.AuthenticateAsync(credentials, CancellationToken.None);
+        if (_authResult.Success)
+        {
+            _savedSecretRef = await SaveAccountAsync(_selectedProvider, _authResult, CancellationToken.None);
+            await ReloadAccountsAsync();
+        }
+    }
+
+    private async Task<string?> SaveAccountAsync(IMediaProvider provider, AuthResult authResult, CancellationToken ct)
+    {
+        var label = ResolveLabel(provider, authResult);
+        var secret = ResolveSecret(authResult);
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            return null;
+        }
+
+        var secretRef = await SecretVault.StoreAsync(provider.Id, label, secret, ct);
+        var existing = await CredentialStore.GetAsync(provider.Id, label, ct);
+        var account = new ProviderAccount(
+            existing?.Id ?? Guid.NewGuid(),
+            provider.Id,
+            label,
+            _model.Username,
+            secretRef,
+            AuthenticationState.Valid,
+            DateTimeOffset.UtcNow);
+
+        await CredentialStore.SaveAsync(account, ct);
+        return secretRef;
+    }
+
+    private string ResolveLabel(IMediaProvider provider, AuthResult authResult) =>
+        FirstNonEmpty(_model.Label, authResult.DisplayName, _model.Username, provider.DisplayName);
+
+    private string? ResolveSecret(AuthResult authResult) =>
+        FirstNonEmptyOrNull(_model.Password, _model.Token, authResult.SecretRef);
+
+    private async Task ReloadAccountsAsync() =>
+        _accounts = await CredentialStore.ListAsync(CancellationToken.None);
+
+    private void ApplyFirstStoredAccount()
+    {
+        var account = GetAccounts(_model.ProviderId).FirstOrDefault();
+        if (account is null)
+        {
+            return;
+        }
+
+        _model.Username = account.Username;
+        _model.Label = account.Label;
+    }
+
+    private static string DescribeCapabilities(ProviderCapabilities capabilities)
+    {
+        var auth = GetCapabilityHint(capabilities.SupportsPasswordLogin, "password login", "no password login");
+        var token = GetCapabilityHint(capabilities.SupportsTokens, "token login", "no token login");
+        return $"{auth}. {token}.";
+    }
+
+    private static string GetCapabilityHint(bool supported, string yes, string no) => supported ? yes : no;
+
+    private IReadOnlyList<ProviderAccount> GetAccounts(string providerId) =>
+        _accounts.Where(account => account.ProviderId == providerId).ToArray();
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        FirstNonEmptyOrNull(values) ?? "default";
+
+    private static string? FirstNonEmptyOrNull(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    private sealed class LoginFormModel
+    {
+        public string ProviderId { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string Token { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+    }
+}

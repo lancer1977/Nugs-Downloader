@@ -72,6 +72,7 @@ make clean
 - [`docs/features/backend-layout.md`](./docs/features/backend-layout.md)
 - [`docs/features/web-ui.md`](./docs/features/web-ui.md)
 - [`docs/features/config-and-cli.md`](./docs/features/config-and-cli.md)
+- [`docs/features/portainer-stack/README.md`](./docs/features/portainer-stack/README.md)
 - [`docs/roadmaps/csharp-blazor-multisite/README.md`](./docs/roadmaps/csharp-blazor-multisite/README.md)
 
 ## Notes

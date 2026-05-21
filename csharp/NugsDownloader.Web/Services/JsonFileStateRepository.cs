@@ -5,7 +5,7 @@ namespace NugsDownloader.Web.Services;
 
 public sealed class JsonFileStateRepository : JsonFileRepository, IFileStateRepository
 {
-    public JsonFileStateRepository() : base(JsonStorePaths.FileStates) { }
+    public JsonFileStateRepository(JsonStorePaths paths) : base(paths.FileStates) { }
 
     public async Task<IReadOnlyList<FileState>> GetByJobAsync(Guid jobId, CancellationToken ct)
     {

@@ -1,6 +1,53 @@
 @inherits LayoutComponentBase
 
-<div class="page">
-    @Body
-</div>
+<MudThemeProvider Theme="_theme" IsDarkMode="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
 
+<MudLayout Class="nugs-shell">
+    <MudAppBar Color="Color.Primary" Elevation="1" Dense="true" Class="nugs-appbar">
+        <MudText Typo="Typo.h6">NugsDownloader</MudText>
+        <MudSpacer />
+        <MudButton Href="/" Color="Color.Inherit" Variant="Variant.Text">Dashboard</MudButton>
+        <MudButton Href="/queue" Color="Color.Inherit" Variant="Variant.Text">Queue</MudButton>
+        <MudButton Href="/login" Color="Color.Inherit" Variant="Variant.Text">Login</MudButton>
+        <MudButton Href="/file-state" Color="Color.Inherit" Variant="Variant.Text">Files</MudButton>
+        <MudButton Href="/provider-settings" Color="Color.Inherit" Variant="Variant.Text">Providers</MudButton>
+    </MudAppBar>
+
+    <MudMainContent Class="nugs-main">
+        <MudContainer MaxWidth="MaxWidth.False" Class="nugs-content">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private readonly MudTheme _theme = new()
+    {
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#2dd4bf",
+            Secondary = "#f59e0b",
+            Tertiary = "#7dd3fc",
+            Background = "#101418",
+            BackgroundGray = "#161b22",
+            Surface = "#1b222b",
+            AppbarBackground = "#111827",
+            AppbarText = "#f8fafc",
+            DrawerBackground = "#151b23",
+            TextPrimary = "#f8fafc",
+            TextSecondary = "#b8c4d4",
+            Divider = "#2f3a47",
+            ActionDefault = "#d4dee9",
+            Success = "#22c55e",
+            Warning = "#f59e0b",
+            Error = "#fb7185"
+        },
+        LayoutProperties = new LayoutProperties
+        {
+            DefaultBorderRadius = "6px"
+        }
+    };
+}

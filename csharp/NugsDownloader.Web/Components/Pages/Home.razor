@@ -1,161 +1,151 @@
 @page "/"
 @using NugsDownloader.App.Abstractions
-@using NugsDownloader.App.UseCases
 @using NugsDownloader.Domain.Entities
+@using NugsDownloader.Domain.Providers
 @using NugsDownloader.Domain.ValueObjects
-@inject IDownloadWorkflow DownloadWorkflow
 @inject IProviderCatalog ProviderCatalog
 @inject IJobRepository JobRepository
 @inject IFileStateRepository FileStateRepository
 
 <h1>NugsDownloader</h1>
-<p>Operator console for queued downloads, provider login, and job state.</p>
+<p>Dashboard for jobs, provider status, and file state.</p>
 
 <div>
-    <label>Provider</label>
-    <select @bind="_model.ProviderId">
-        @foreach (var provider in _providers)
-        {
-            <option value="@provider.Id">@provider.DisplayName</option>
-        }
-    </select>
+    <a href="/queue">Queue</a> |
+    <a href="/login">Login</a> |
+    <a href="/file-state">File State</a> |
+    <a href="/provider-settings">Provider Settings</a>
 </div>
 
-<EditForm Model="_model" OnValidSubmit="StartDownloadAsync">
-    <DataAnnotationsValidator />
-    <ValidationSummary />
-
-    <div>
-        <label>Source URL</label>
-        <InputText @bind-Value="_model.SourceUrl" />
-    </div>
-
-    <div>
-        <label>Username</label>
-        <InputText @bind-Value="_model.Username" />
-    </div>
-
-    <div>
-        <label>Password</label>
-        <InputText type="password" @bind-Value="_model.Password" />
-    </div>
-
-    <div>
-        <label>Label</label>
-        <InputText @bind-Value="_model.Label" />
-    </div>
-
-    <div>
-        <label>Audio Format</label>
-        <InputSelect @bind-Value="_model.AudioFormat">
-            <option value="">Auto</option>
-            <option value="alac">ALAC</option>
-            <option value="flac">FLAC</option>
-            <option value="mqa">MQA</option>
-            <option value="aac">AAC</option>
-        </InputSelect>
-    </div>
-
-    <div>
-        <label>Video Resolution</label>
-        <InputSelect @bind-Value="_model.VideoResolution">
-            <option value="">Auto</option>
-            <option value="480p">480p</option>
-            <option value="720p">720p</option>
-            <option value="1080p">1080p</option>
-            <option value="1440p">1440p</option>
-            <option value="4k">4K</option>
-        </InputSelect>
-    </div>
-
-    <div>
-        <label>
-            <InputCheckbox @bind-Value="_model.ForceVideo" />
-            Force video
-        </label>
-    </div>
-
-    <button type="submit">Start</button>
-</EditForm>
-
-@if (!string.IsNullOrWhiteSpace(_message))
+<h2>Providers</h2>
+@if (_providers.Count == 0)
 {
-    <p>@_message</p>
+    <p>No providers are configured.</p>
+}
+else
+{
+    <ul>
+        @foreach (var provider in _providers)
+        {
+            <li>
+                <strong>@provider.DisplayName</strong> (@provider.Id)
+                - @DescribeCapabilities(provider.Capabilities)
+            </li>
+        }
+    </ul>
 }
 
 <h2>Jobs</h2>
-<ul>
-    @foreach (var job in _jobs)
-    {
-        <li><a href="@($"/jobs/{job.Id}")">@job.ProviderId - @job.DisplayName - @job.Status</a></li>
-    }
-</ul>
+@if (_jobs.Count == 0)
+{
+    <p>No jobs have been queued yet.</p>
+}
+else
+{
+    <ul>
+        @foreach (var job in _jobs.Take(5))
+        {
+            <li>
+                <a href="@($"/jobs/{job.Id}")">@job.DisplayName</a>
+                - @job.Status
+                - @job.ProviderId
+            </li>
+        }
+    </ul>
+}
 
-<h2>File State</h2>
-<ul>
-    @foreach (var state in _fileStates)
-    {
-        <li>@state.JobId - @state.FilePath - @state.Status</li>
-    }
-</ul>
+<h2>Recent Activity</h2>
+@if (_recentActivity.Count == 0)
+{
+    <p>No recent activity has been recorded yet.</p>
+}
+else
+{
+    <ul>
+        @foreach (var job in _recentActivity)
+        {
+            <li>@GetActivityTime(job): @job.DisplayName - @job.Status</li>
+        }
+    </ul>
+}
+
+<h2>File State Snapshot</h2>
+@if (_fileStates.Count == 0)
+{
+    <p>No file state has been recorded yet.</p>
+}
+else
+{
+    <ul>
+        @foreach (var state in _fileStates)
+        {
+            <li>@state.FilePath - @state.Status - @state.Kind</li>
+        }
+    </ul>
+}
 
 @code {
-    private readonly DownloadFormModel _model = new();
-    private string? _message;
+    private IReadOnlyList<IMediaProvider> _providers = Array.Empty<IMediaProvider>();
     private IReadOnlyList<DownloadJob> _jobs = Array.Empty<DownloadJob>();
+    private IReadOnlyList<DownloadJob> _recentActivity = Array.Empty<DownloadJob>();
     private IReadOnlyList<FileState> _fileStates = Array.Empty<FileState>();
-    private IReadOnlyList<NugsDownloader.Domain.Providers.IMediaProvider> _providers = Array.Empty<NugsDownloader.Domain.Providers.IMediaProvider>();
 
     protected override async Task OnInitializedAsync()
     {
         _providers = ProviderCatalog.GetProviders();
-        _model.ProviderId = _providers.FirstOrDefault()?.Id ?? string.Empty;
-        await ReloadAsync();
-    }
-
-    private async Task StartDownloadAsync()
-    {
-        if (!Uri.TryCreate(_model.SourceUrl, UriKind.Absolute, out var sourceUrl))
-        {
-            _message = "Enter a valid absolute URL.";
-            return;
-        }
-
-        var prefs = new DownloadPreferences(
-            PreferredAudioFormat: _model.AudioFormat,
-            PreferredVideoResolution: _model.VideoResolution,
-            SkipVideos: false,
-            SkipChapters: false,
-            ForceVideo: _model.ForceVideo,
-            OutputRoot: "Downloads",
-            WriteMetadata: true,
-            WriteArtwork: true);
-
-        var credentials = new Credentials(_model.Username, _model.Password, null, _model.Label);
-        var request = new StartDownloadRequest(null, _model.ProviderId, sourceUrl, credentials, prefs);
-        var result = await DownloadWorkflow.StartAsync(request, new Progress<DownloadProgress>(), CancellationToken.None);
-        _message = $"{result.Status}: {result.Message}";
-        await ReloadAsync();
-    }
-
-    private async Task ReloadAsync()
-    {
         _jobs = await JobRepository.ListAsync(CancellationToken.None);
+        _recentActivity = _jobs
+            .OrderByDescending(job => job.CompletedAt ?? job.StartedAt ?? job.RequestedAt)
+            .Take(5)
+            .ToArray();
+
         if (_jobs.Count > 0)
         {
             _fileStates = await FileStateRepository.GetByJobAsync(_jobs.Last().Id, CancellationToken.None);
         }
     }
 
-    private sealed class DownloadFormModel
+    private static string DescribeCapabilities(ProviderCapabilities capabilities)
     {
-        public string SourceUrl { get; set; } = string.Empty;
-        public string Username { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-        public string Label { get; set; } = string.Empty;
-        public string ProviderId { get; set; } = string.Empty;
-        public string? AudioFormat { get; set; }
-        public string? VideoResolution { get; set; }
-        public bool ForceVideo { get; set; }
+        var bits = new List<string>();
+
+        if (capabilities.SupportsAudio)
+        {
+            bits.Add("audio");
+        }
+
+        if (capabilities.SupportsVideo)
+        {
+            bits.Add("video");
+        }
+
+        if (capabilities.SupportsChapters)
+        {
+            bits.Add("chapters");
+        }
+
+        if (capabilities.SupportsResume)
+        {
+            bits.Add("resume");
+        }
+
+        if (capabilities.SupportsTokens)
+        {
+            bits.Add("tokens");
+        }
+
+        if (capabilities.SupportsPasswordLogin)
+        {
+            bits.Add("password login");
+        }
+
+        var summary = bits.Count > 0 ? string.Join(", ", bits) : "no feature hints";
+        var formats = capabilities.SupportedFormats.Count > 0 ? string.Join(", ", capabilities.SupportedFormats) : "any format";
+        var resolutions = capabilities.SupportedResolutions.Count > 0 ? string.Join(", ", capabilities.SupportedResolutions) : "any resolution";
+
+        return $"{summary}. Formats: {formats}. Resolutions: {resolutions}.";
     }
+
+    private static string GetActivityTime(DownloadJob job) =>
+        (job.CompletedAt ?? job.StartedAt ?? job.RequestedAt).ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 }

@@ -1,0 +1,82 @@
+@page "/provider-settings"
+@using NugsDownloader.App.Abstractions
+@using NugsDownloader.Domain.Entities
+@using NugsDownloader.Domain.Providers
+@using NugsDownloader.Domain.ValueObjects
+@inject ICredentialStore CredentialStore
+@inject IProviderCatalog ProviderCatalog
+
+<h1>Provider Settings</h1>
+<p>Review provider capabilities and limits before you queue or authenticate.</p>
+
+<div>
+    <a href="/">Dashboard</a> |
+    <a href="/queue">Queue</a> |
+    <a href="/login">Login</a> |
+    <a href="/file-state">File State</a>
+</div>
+
+@if (_providers.Count == 0)
+{
+    <p>No providers are configured.</p>
+}
+else
+{
+    <ul>
+        @foreach (var provider in _providers)
+        {
+            <li>
+                <strong>@provider.DisplayName</strong> (@provider.Id)
+                <div>@DescribeCapabilities(provider.Capabilities)</div>
+                <div>Formats: @DescribeValues(provider.Capabilities.SupportedFormats)</div>
+                <div>Resolutions: @DescribeValues(provider.Capabilities.SupportedResolutions)</div>
+                <div>Default audio: @DescribeDefault(provider.Capabilities.SupportedFormats)</div>
+                <div>Default video: @DescribeDefault(provider.Capabilities.SupportedResolutions)</div>
+                <div>Stored accounts: @GetAccounts(provider.Id).Count</div>
+                @if (GetAccounts(provider.Id).Count > 0)
+                {
+                    <ul>
+                        @foreach (var account in GetAccounts(provider.Id))
+                        {
+                            <li>@account.Label - @account.Username - @account.AuthState</li>
+                        }
+                    </ul>
+                }
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private IReadOnlyList<IMediaProvider> _providers = Array.Empty<IMediaProvider>();
+    private IReadOnlyList<ProviderAccount> _accounts = Array.Empty<ProviderAccount>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _providers = ProviderCatalog.GetProviders();
+        _accounts = await CredentialStore.ListAsync(CancellationToken.None);
+    }
+
+    private static string DescribeCapabilities(ProviderCapabilities capabilities)
+    {
+        var hints = new List<string>();
+
+        hints.Add(GetCapabilityHint(capabilities.SupportsAudio, "audio", "no audio"));
+        hints.Add(GetCapabilityHint(capabilities.SupportsVideo, "video", "no video"));
+        hints.Add(GetCapabilityHint(capabilities.SupportsChapters, "chapters", "no chapters"));
+        hints.Add(GetCapabilityHint(capabilities.SupportsResume, "resume", "no resume"));
+        hints.Add(GetCapabilityHint(capabilities.SupportsTokens, "tokens", "no tokens"));
+        hints.Add(GetCapabilityHint(capabilities.SupportsPasswordLogin, "password login", "no password login"));
+
+        return string.Join(", ", hints);
+    }
+
+    private static string DescribeValues(IReadOnlyList<string> values) => values.Count > 0 ? string.Join(", ", values) : "any";
+
+    private static string DescribeDefault(IReadOnlyList<string> values) => values.Count > 0 ? $"Auto ({values[0]})" : "Auto";
+
+    private static string GetCapabilityHint(bool supported, string yes, string no) => supported ? yes : no;
+
+    private IReadOnlyList<ProviderAccount> GetAccounts(string providerId) =>
+        _accounts.Where(account => account.ProviderId == providerId).ToArray();
+}
