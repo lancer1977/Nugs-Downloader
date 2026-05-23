@@ -1,30 +1,29 @@
 ---
-title: Config and CLI
+title: Config and Hosting
 status: active
 owner: @codex
 priority: high
 complexity: 2
 created: 2026-04-26
-updated: 2026-04-26
-tags: [feature, cli, config]
+updated: 2026-05-22
+tags: [feature, config, hosting]
 ---
 
-# Config and CLI
+# Config and Hosting
 
 ## Summary
 
-The app supports both direct CLI downloads and a UI mode, with config loaded from `config.json`.
+The app is configured through the `NugsDownloader` settings section and the deployment environment.
 
 ## Current Behavior
 
-- CLI arguments override config file values.
-- Config defaults are created under `~/.config/nugs-downloader/` when missing.
-- `--ui` switches the app into web-server mode.
-- `--port` selects the UI port.
+- Storage and persistence settings are bound from the app configuration.
+- CLI-style Go flags are no longer part of the runtime.
+- The web host uses the configured URL and port from the deployment environment or launch settings.
+- Runtime state and data-protection keys are stored beneath the configured state directory.
 
 ## Checklist
 
-- [x] Document the config search order in the root README
-- [x] Keep CLI and UI mode in the same executable
-- [x] Replace the old placeholder feature pages with links into this doc set
-- [x] Capture the current config and FFmpeg setup in the root README
+- [x] Document the storage/config section used by the web host
+- [x] Keep the deployment stack and the app configuration aligned
+- [x] Replace the old Go CLI expectations with the current C# host model

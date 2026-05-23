@@ -5,7 +5,7 @@ owner: @codex
 priority: high
 complexity: 5
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-22
 tags: [roadmap, csharp, blazor, multisite, rewrite]
 ---
 
@@ -13,11 +13,12 @@ tags: [roadmap, csharp, blazor, multisite, rewrite]
 
 ## Summary
 
-Replace the current Go backend and React/Vite UI with a single C# solution built around Blazor and ASP.NET Core.
+Replace the legacy backend and React/Vite UI with a single C# solution built around Blazor and ASP.NET Core.
 
 ## Current Status
 
-- The staged C# tree exists under `csharp/`.
+- The legacy tree has been removed from the repository.
+- The active C# tree exists under `csharp/`.
 - The Domain, App, and Infrastructure layers have initial types and ports.
 - The Blazor web host scaffold exists and is wired into a solution file.
 

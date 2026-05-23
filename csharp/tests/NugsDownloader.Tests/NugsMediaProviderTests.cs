@@ -201,7 +201,8 @@ public class NugsMediaProviderTests
             new[]
             {
                 new NugsDownloader.Domain.ValueObjects.MediaItem("1", "Song 1", "audio", 0, new Dictionary<string, string>())
-            });
+            },
+            artistName: "Artist");
 
         var preferences = new NugsDownloader.Domain.ValueObjects.DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true);
         var plan = await provider.BuildDownloadPlanAsync(discovery, preferences, CancellationToken.None);
@@ -211,9 +212,9 @@ public class NugsMediaProviderTests
         Assert.Single(plan.Items);
         Assert.Equal("flac", plan.Items[0].Metadata["selectedAudioFormat"]);
         Assert.Equal("1", plan.Items[0].Metadata["trackNumber"]);
-        Assert.Equal(Path.Combine("Downloads", "Album", "01", "Song 1", "flac"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Audio).FilePath);
-        Assert.Equal(Path.Combine("Downloads", "Album", "metadata.nfo"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Metadata).FilePath);
-        Assert.Equal(Path.Combine("Downloads", "Album", "cover.jpg"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Artwork).FilePath);
+        Assert.Equal(Path.Combine("Downloads", "Artist", "Album", "01. Song 1.flac"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Audio).FilePath);
+        Assert.Equal(Path.Combine("Downloads", "Artist", "Album", "metadata.nfo"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Metadata).FilePath);
+        Assert.Equal(Path.Combine("Downloads", "Artist", "Album", "cover.jpg"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Artwork).FilePath);
     }
 
     [Fact]
@@ -225,13 +226,15 @@ public class NugsMediaProviderTests
             new[]
             {
                 new NugsDownloader.Domain.ValueObjects.MediaItem("20", "Playlist Song", "audio", 0, new Dictionary<string, string>())
-            });
+            },
+            artistName: null,
+            metadata: new Dictionary<string, string> { ["playlistId"] = "321" });
 
         var preferences = new NugsDownloader.Domain.ValueObjects.DownloadPreferences("aac", "1080p", false, false, false, "Library", true, true);
         var plan = await provider.BuildDownloadPlanAsync(discovery, preferences, CancellationToken.None);
 
         var audioFile = Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Audio);
-        Assert.Equal(Path.Combine("Library", "Playlist", "01", "Playlist Song", "aac"), audioFile.FilePath);
+        Assert.Equal(Path.Combine("Library", "Playlist", "01. Playlist Song.aac"), audioFile.FilePath);
         Assert.Equal("aac", plan.Items[0].Metadata["selectedAudioFormat"]);
         Assert.Equal("1", plan.Items[0].Metadata["trackNumber"]);
         Assert.All(plan.ExpectedFiles, file => Assert.StartsWith("Library", file.FilePath));
@@ -247,6 +250,7 @@ public class NugsMediaProviderTests
             {
                 new NugsDownloader.Domain.ValueObjects.MediaItem("v1", "Main Feature", "video", 0, new Dictionary<string, string>())
             },
+            artistName: null,
             hasVideo: true,
             hasAudio: false);
 
@@ -254,7 +258,7 @@ public class NugsMediaProviderTests
         var plan = await provider.BuildDownloadPlanAsync(discovery, preferences, CancellationToken.None);
 
         var videoFile = Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Video);
-        Assert.Equal(Path.Combine("Videos", "Concert", "01", "Main Feature", "4k"), videoFile.FilePath);
+        Assert.Equal(Path.Combine("Videos", "Concert", "Concert_4k.mp4"), videoFile.FilePath);
         Assert.Equal("4k", plan.Items[0].Metadata["selectedVideoResolution"]);
         Assert.Equal("1", plan.Items[0].Metadata["trackNumber"]);
     }
@@ -404,8 +408,10 @@ public class NugsMediaProviderTests
     private static NugsDownloader.Domain.ValueObjects.MediaDiscoveryResult CreateDiscovery(
         string title,
         IReadOnlyList<NugsDownloader.Domain.ValueObjects.MediaItem> items,
+        string? artistName = null,
         bool? hasVideo = null,
-        bool? hasAudio = null)
+        bool? hasAudio = null,
+        IReadOnlyDictionary<string, string>? metadata = null)
     {
         var actualHasVideo = hasVideo ?? items.Any(item => item.Kind is "video" or "livestream");
         var actualHasAudio = hasAudio ?? items.Any(item => item.Kind == "audio");
@@ -415,10 +421,10 @@ public class NugsMediaProviderTests
             new Uri("https://play.nugs.net/release/123"),
             new Uri("https://play.nugs.net/release/123"),
             title,
-            "Artist",
+            artistName,
             items,
             actualHasVideo,
             actualHasAudio,
-            new Dictionary<string, string>());
+            metadata ?? new Dictionary<string, string>());
     }
 }

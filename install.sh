@@ -1,14 +1,12 @@
-# Install dependencies
-make deps
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Run linter (requires golangci-lint)
-make lint
+# Restore dependencies for the active C# solution.
+dotnet restore csharp/NugsDownloader.sln
 
-# Build for current platform
-make build
+# Build and test the active solution.
+dotnet build csharp/NugsDownloader.sln
+dotnet test csharp/NugsDownloader.sln
 
-# Build for all platforms
-make build-all
-
-# Clean build artifacts
-make clean
+# Clean build artifacts when you're done.
+dotnet clean csharp/NugsDownloader.sln

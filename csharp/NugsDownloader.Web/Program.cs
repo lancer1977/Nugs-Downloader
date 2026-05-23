@@ -29,11 +29,12 @@ builder.Services.AddMudServices();
 builder.Services.AddSingleton<NugsDownloader.Domain.Providers.IMediaProvider, NugsMediaProvider>();
 builder.Services.AddSingleton<IProviderCatalog, InMemoryProviderCatalog>(sp =>
     new InMemoryProviderCatalog(sp.GetServices<NugsDownloader.Domain.Providers.IMediaProvider>()));
-builder.Services.AddSingleton<JsonStorePaths>();
-builder.Services.AddSingleton<IJobRepository, JsonJobRepository>();
-builder.Services.AddSingleton<IFileStateRepository, JsonFileStateRepository>();
-builder.Services.AddSingleton<ICredentialStore, JsonCredentialStore>();
-builder.Services.AddSingleton<ISecretVault, JsonSecretVault>();
+builder.Services.AddSingleton<SqliteStorePaths>();
+builder.Services.AddSingleton<SqliteStateStore>();
+builder.Services.AddSingleton<IJobRepository, SqliteJobRepository>();
+builder.Services.AddSingleton<IFileStateRepository, SqliteFileStateRepository>();
+builder.Services.AddSingleton<ICredentialStore, SqliteCredentialStore>();
+builder.Services.AddSingleton<ISecretVault, SqliteSecretVault>();
 builder.Services.AddScoped<IDownloadWorkflow, DownloadWorkflow>();
 builder.Services
     .AddHealthChecks()

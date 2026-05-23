@@ -9,96 +9,25 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: [1.21.x, 1.22.x]
-      max-parallel: 1  # Run tests sequentially to avoid file conflicts
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v4
       with:
-        go-version: ${{ matrix.go-version }}
+        dotnet-version: 10.0.x
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y ffmpeg
 
-    - name: Set up test environment
-      run: |
-        # Create unique temp directory for this test run
-        export TMPDIR=/tmp/go-test-${{ matrix.go-version }}-${{ github.run_id }}
-        mkdir -p $TMPDIR
-        echo "TMPDIR=$TMPDIR" >> $GITHUB_ENV
+    - name: Restore
+      run: dotnet restore csharp/NugsDownloader.sln
 
-    - name: Cache Go modules
-      uses: actions/cache@v3
-      with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-${{ matrix.go-version }}-
-      continue-on-error: true  # Don't fail if cache restore fails
-
-    - name: Download dependencies
-      run: go mod download
-
-    - name: Clean previous test artifacts
-      run: |
-        # Clean up any leftover test files
-        find . -name "*.out" -type f -delete 2>/dev/null || true
-        find . -name "temp_*" -type f -delete 2>/dev/null || true
-
-    - name: Run unit tests (stable packages)
-      run: go test ./src/pkg/models ./src/pkg/logger ./src/pkg/fsutil ./src/pkg/config ./src/pkg/api -v -race
-
-    - name: Run downloader tests
-      run: go test ./src/pkg/downloader -v -race
-
-    - name: Run processor integration tests (may fail)
-      run: |
-        echo "Running integration tests (may fail due to HTTP mocking complexity)..."
-        if go test ./src/pkg/processor -v -race; then
-          echo "✅ Integration tests passed"
-          exit 0
-        else
-          echo "⚠️  Integration tests failed (expected due to mocking limitations)"
-          echo "This is acceptable for CI - core functionality is tested above"
-          exit 0  # Always exit successfully
-        fi
-
-    - name: Generate coverage (exclude integration tests)
-      run: go test ./src/pkg/models ./src/pkg/logger ./src/pkg/fsutil ./src/pkg/config ./src/pkg/api ./src/pkg/downloader -coverprofile=coverage.out
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.out
-        flags: unittests
-        fail_ci_if_error: false
-
-  build:
-    runs-on: ubuntu-latest
-    needs: test
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: 1.22.x
-
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg
+    - name: Test
+      run: dotnet test csharp/NugsDownloader.sln --no-restore -m:1 -p:UseSharedCompilation=false --logger 'console;verbosity=minimal'
 
     - name: Build
-      run: go build -o Nugs-Downloader -v ./src
-
-    - name: Test build
-      run: ./Nugs-Downloader --help
+      run: dotnet build csharp/NugsDownloader.sln --no-restore -m:1

@@ -5,49 +5,45 @@ owner: @codex
 priority: high
 complexity: 4
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-22
 tags: [roadmap, migration, ledger, csharp]
 ---
 
 # Migration Ledger
 
-## Go To C# Mapping
+## Current Architecture Map
 
 ### Entry Points and UI
 
-- `src/main.go` -> `NugsDownloader.Web` host startup and routing
-- `src/ui_embedded.go` -> no direct equivalent; UI is native Blazor
-- `ui/` -> `NugsDownloader.Web` components/pages
+- `NugsDownloader.Web` hosts the app, routing, health checks, and Blazor UI.
+- `NugsDownloader.Web/Components` contains the interactive pages and layout.
 
 ### Configuration and Startup
 
-- `src/pkg/config` -> `NugsDownloader.App.Abstractions` + `NugsDownloader.Web` configuration binding
-- `src/pkg/fsutil` -> `NugsDownloader.Infrastructure.Filesystem`
-- `src/pkg/logger` -> `NugsDownloader.Web` logging + shared logging setup
+- `NugsDownloader.Web` binds configuration and wires the host together.
+- `NugsDownloader.App.Abstractions` defines application-facing ports.
 
 ### Domain and Models
 
-- `src/pkg/models` -> `NugsDownloader.Domain`
-- `src/pkg/models/progress.go` -> `NugsDownloader.Domain.State`
-- `src/pkg/models/types.go` -> `NugsDownloader.Domain.Entities`, `ValueObjects`, `Providers`, and `State`
+- `NugsDownloader.Domain` contains the shared entities, value objects, providers, and state models.
 
 ### API and Auth
 
-- `src/pkg/api` -> `NugsDownloader.Infrastructure.Auth` and site-specific provider clients
+- `NugsDownloader.Infrastructure` contains the provider clients and auth helpers.
 
 ### Download Orchestration
 
-- `src/pkg/downloader` -> `NugsDownloader.Infrastructure.Downloads`
-- `src/pkg/processor` -> `NugsDownloader.App.UseCases`
+- `NugsDownloader.Infrastructure.Downloads` handles fetch and resume behavior.
+- `NugsDownloader.App.UseCases` coordinates workflows and job execution.
 
 ### Web/API Surface
 
-- `src/pkg/server` -> `NugsDownloader.Web` endpoints and Blazor pages
+- `NugsDownloader.Web` exposes the user-facing pages and HTTP endpoints.
 
 ## Replacement Principles
 
-- Move pure data types into `Domain` first.
-- Move workflow logic into `App`.
+- Keep pure data types in `Domain` first.
+- Keep workflow logic in `App`.
 - Keep IO, crypto, and HTTP in `Infrastructure`.
 - Keep the Web project thin and focused on presentation.
 

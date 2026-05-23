@@ -1,48 +1,35 @@
-.PHONY: test test-verbose test-coverage test-race build clean
+.PHONY: test test-verbose test-coverage test-race build clean lint ci-test
+
+SOLUTION := csharp/NugsDownloader.sln
 
 # Test commands
 test:
-	go test ./src/pkg/...
+	dotnet test $(SOLUTION) --logger 'console;verbosity=minimal'
 
 test-verbose:
-	go test ./src/pkg/... -v
+	dotnet test $(SOLUTION) --logger 'console;verbosity=normal'
 
 test-coverage:
-	go test ./src/pkg/... -coverprofile=coverage.out
-	go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html"
+	dotnet test $(SOLUTION) --collect:"XPlat Code Coverage" --results-directory TestResults
+	@echo "Coverage results written to TestResults/"
 
 test-race:
-	go test ./src/pkg/... -race
+	@echo "No race detector is available for .NET; running the standard test suite instead."
+	$(MAKE) test
 
 # Build commands
-build-ui:
-	cd ui && npm run build
-
-build: build-ui
-	go build -o bin/nugs-downloader ./src
-
-build-all:
-	GOOS=linux GOARCH=amd64 go build -o bin/nugs-downloader-linux-amd64 ./src
-	GOOS=windows GOARCH=amd64 go build -o bin/nugs-downloader-windows-amd64.exe ./src
-	GOOS=darwin GOARCH=amd64 go build -o bin/nugs-downloader-darwin-amd64 ./src
-	GOOS=darwin GOARCH=arm64 go build -o bin/nugs-downloader-darwin-arm64 ./src
+build:
+	dotnet build $(SOLUTION)
 
 # Development
 clean:
-	go clean
-	rm -f coverage.out coverage.html
-	rm -rf bin/
+	dotnet clean $(SOLUTION)
+	rm -rf TestResults/
 
 # CI/CD
 ci-test:
-	go test ./src/pkg/... -v -race -coverprofile=coverage.out
+	dotnet test $(SOLUTION) --logger 'console;verbosity=minimal'
 
-# Linting (requires golangci-lint)
+# Linting
 lint:
-	golangci-lint run
-
-# Dependencies
-deps:
-	go mod download
-	go mod tidy
+	dotnet format $(SOLUTION) --verify-no-changes

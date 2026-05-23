@@ -54,7 +54,10 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             startedAt,
             null,
             null,
-            request.Preferences.OutputRoot);
+            request.Preferences.OutputRoot,
+            request.Credentials.Label,
+            request.Credentials.Username,
+            request.Preferences);
         await _jobRepository.SaveAsync(pendingJob, ct);
         var currentJob = pendingJob;
 
@@ -86,7 +89,10 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
                 startedAt,
                 null,
                 null,
-                request.Preferences.OutputRoot);
+                request.Preferences.OutputRoot,
+                request.Credentials.Label,
+                request.Credentials.Username,
+                request.Preferences);
 
             await _jobRepository.SaveAsync(job, ct);
             currentJob = job;
@@ -171,6 +177,12 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             return new StartDownloadResult(jobId, string.Empty, "NotFound", "Job not found.");
         }
 
+        var replayRequest = await BuildReplayRequestAsync(job, ct);
+        if (replayRequest is not null)
+        {
+            return await StartAsync(replayRequest with { JobId = jobId }, new Progress<DownloadProgress>(), ct);
+        }
+
         var fileStates = await _fileStateRepository.GetByJobAsync(jobId, ct);
         var partialStates = fileStates.Where(state => state.Status == FileStatus.Partial).ToArray();
         var resumableCount = 0;
@@ -214,6 +226,12 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             return new StartDownloadResult(jobId, string.Empty, "NotFound", "Job not found.");
         }
 
+        var replayRequest = await BuildReplayRequestAsync(job, ct);
+        if (replayRequest is not null)
+        {
+            return await StartAsync(replayRequest with { JobId = jobId }, new Progress<DownloadProgress>(), ct);
+        }
+
         await _jobRepository.SaveAsync(job with
         {
             Status = DownloadJobStatus.Ready,
@@ -222,6 +240,70 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
         }, ct);
 
         return new StartDownloadResult(jobId, job.ProviderId, "RetryQueued", "Job is ready to retry.");
+    }
+
+    private async Task<StartDownloadRequest?> BuildReplayRequestAsync(DownloadJob job, CancellationToken ct)
+    {
+        var provider = _providerCatalog.FindById(job.ProviderId);
+        if (provider is null)
+        {
+            return null;
+        }
+
+        var account = await ResolveReplayAccountAsync(job.ProviderId, job.CredentialLabel, job.CredentialUsername, ct);
+        if (account is null)
+        {
+            return null;
+        }
+
+        var secret = await _secretVault.GetAsync(account.SecretRef, ct);
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            return null;
+        }
+
+        var preferences = job.Preferences ?? new DownloadPreferences(
+            null,
+            null,
+            false,
+            false,
+            false,
+            job.OutputPath,
+            true,
+            true);
+
+        var credentials = new Credentials(
+            account.Username,
+            secret,
+            null,
+            account.Label);
+
+        return new StartDownloadRequest(job.Id, provider.Id, job.SourceUrl, credentials, preferences);
+    }
+
+    private async Task<ProviderAccount?> ResolveReplayAccountAsync(string providerId, string? label, string? username, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(label))
+        {
+            var labeledAccount = await _credentialStore.GetAsync(providerId, label, ct);
+            if (labeledAccount is not null)
+            {
+                return labeledAccount;
+            }
+        }
+
+        var accounts = await _credentialStore.ListAsync(ct);
+        return accounts
+            .Where(account => account.ProviderId == providerId)
+            .Where(account => string.IsNullOrWhiteSpace(username) || string.Equals(account.Username, username, StringComparison.OrdinalIgnoreCase))
+            .Where(account => account.AuthState != AuthenticationState.Invalid)
+            .OrderByDescending(account => account.LastVerifiedAt ?? DateTimeOffset.MinValue)
+            .FirstOrDefault()
+            ?? accounts
+                .Where(account => account.ProviderId == providerId)
+                .Where(account => account.AuthState != AuthenticationState.Invalid)
+                .OrderByDescending(account => account.LastVerifiedAt ?? DateTimeOffset.MinValue)
+                .FirstOrDefault();
     }
 
     private static FileStatus ResolveResumeStatus(FileState state)

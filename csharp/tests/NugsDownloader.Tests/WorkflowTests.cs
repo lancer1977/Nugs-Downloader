@@ -121,6 +121,110 @@ public class WorkflowTests
     }
 
     [Fact]
+    public async Task DownloadWorkflow_ResumeReplaysStoredCredentialsAndRunsDownload()
+    {
+        var jobId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var provider = new ReplayProvider();
+        var jobs = new MemoryJobRepository();
+        var states = new MemoryFileStateRepository();
+        var creds = new MemoryCredentialStore();
+        var vault = new MemorySecretVault();
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { provider }),
+            jobs,
+            states,
+            creds,
+            vault);
+
+        var account = new ProviderAccount(
+            Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+            provider.Id,
+            "Main",
+            "alice",
+            $"{provider.Id}:Main",
+            AuthenticationState.Valid,
+            DateTimeOffset.UtcNow);
+        await creds.SaveAsync(account, CancellationToken.None);
+        await vault.StoreAsync(provider.Id, account.Label, "pass", CancellationToken.None);
+        await jobs.SaveAsync(new DownloadJob(
+            jobId,
+            provider.Id,
+            new Uri("https://example.com/release/1"),
+            "Demo",
+            DownloadJobStatus.Paused,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null,
+            null,
+            "Downloads",
+            account.Label,
+            account.Username,
+            new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true)), CancellationToken.None);
+        await states.SaveAsync(new FileState(Guid.NewGuid(), jobId, "/tmp/nugs-missing-file.flac", FileKind.Audio, FileStatus.Partial, 10, 5, null, DateTimeOffset.UtcNow), CancellationToken.None);
+
+        var result = await workflow.ResumeAsync(jobId, CancellationToken.None);
+        var job = await jobs.GetAsync(jobId, CancellationToken.None);
+
+        Assert.Equal("Completed", result.Status);
+        Assert.Equal(DownloadJobStatus.Completed, job!.Status);
+        Assert.Equal("alice", provider.LastCredentials?.Username);
+        Assert.Equal("pass", provider.LastCredentials?.Password);
+        Assert.True(provider.ExecuteCalled);
+        Assert.Contains(provider.LastPlan!.ExpectedFiles, file => file.Kind == FileKind.Audio);
+    }
+
+    [Fact]
+    public async Task DownloadWorkflow_RetryReplaysStoredCredentialsAndRunsDownload()
+    {
+        var jobId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        var provider = new ReplayProvider();
+        var jobs = new MemoryJobRepository();
+        var states = new MemoryFileStateRepository();
+        var creds = new MemoryCredentialStore();
+        var vault = new MemorySecretVault();
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { provider }),
+            jobs,
+            states,
+            creds,
+            vault);
+
+        var account = new ProviderAccount(
+            Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+            provider.Id,
+            "Main",
+            "alice",
+            $"{provider.Id}:Main",
+            AuthenticationState.Valid,
+            DateTimeOffset.UtcNow);
+        await creds.SaveAsync(account, CancellationToken.None);
+        await vault.StoreAsync(provider.Id, account.Label, "pass", CancellationToken.None);
+        await jobs.SaveAsync(new DownloadJob(
+            jobId,
+            provider.Id,
+            new Uri("https://example.com/release/2"),
+            "Retry Demo",
+            DownloadJobStatus.Failed,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            "boom",
+            "Downloads",
+            account.Label,
+            account.Username,
+            new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true)), CancellationToken.None);
+
+        var result = await workflow.RetryAsync(jobId, CancellationToken.None);
+        var job = await jobs.GetAsync(jobId, CancellationToken.None);
+
+        Assert.Equal("Completed", result.Status);
+        Assert.Equal(DownloadJobStatus.Completed, job!.Status);
+        Assert.Equal("alice", provider.LastCredentials?.Username);
+        Assert.Equal("pass", provider.LastCredentials?.Password);
+        Assert.True(provider.ExecuteCalled);
+    }
+
+    [Fact]
     public async Task DownloadWorkflow_ResumeMarksMissingPartialFilesAndReadiesJob()
     {
         var jobId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
@@ -284,6 +388,43 @@ public class WorkflowTests
         public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ReplayProvider : IMediaProvider
+    {
+        public string Id => "replay";
+        public string DisplayName => "Replay";
+        public ProviderCapabilities Capabilities { get; } = new(true, true, true, true, true, true, Array.Empty<string>(), Array.Empty<string>());
+        public Credentials? LastCredentials { get; private set; }
+        public DownloadPlan? LastPlan { get; private set; }
+        public bool ExecuteCalled { get; private set; }
+
+        public bool CanHandle(Uri uri) => true;
+        public Task<AuthResult> AuthenticateAsync(Credentials credentials, CancellationToken ct)
+        {
+            LastCredentials = credentials;
+            return Task.FromResult(new AuthResult(true, Id, "secret-ref", DisplayName, null, "Authenticated"));
+        }
+
+        public Task<MediaDiscoveryResult> DiscoverAsync(Uri uri, CancellationToken ct) =>
+            Task.FromResult(new MediaDiscoveryResult(Id, uri, uri, "Replay Demo", null, new[] { new MediaItem("1", "Item", "audio", 0, new Dictionary<string, string>()) }, false, true, new Dictionary<string, string>()));
+
+        public Task<DownloadPlan> BuildDownloadPlanAsync(MediaDiscoveryResult discovery, DownloadPreferences preferences, CancellationToken ct)
+        {
+            var plan = new DownloadPlan(Id, Guid.NewGuid(), discovery.Items, preferences.OutputRoot, preferences, new[]
+            {
+                new FileState(Guid.NewGuid(), Guid.Empty, Path.Combine(preferences.OutputRoot, "Replay Demo", "01 - Item.flac"), FileKind.Audio, FileStatus.Partial, 0, 0, null, null)
+            }, null);
+            LastPlan = plan;
+            return Task.FromResult(plan);
+        }
+
+        public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct)
+        {
+            ExecuteCalled = true;
+            progress.Report(new DownloadProgress(plan.JobId, plan.ProviderId, 1, 1, 100, 1, 1, "done"));
             return Task.CompletedTask;
         }
     }

@@ -220,6 +220,7 @@ public sealed class NugsMediaProvider : INugsProvider
     public Task<DownloadPlan> BuildDownloadPlanAsync(MediaDiscoveryResult discovery, DownloadPreferences preferences, CancellationToken ct)
     {
         var selectedItems = SelectItems(discovery, preferences);
+        var baseFolder = BuildBaseFolder(discovery, preferences);
         var expectedFiles = selectedItems.Select(item =>
         {
             var fileKind = item.Kind switch
@@ -229,32 +230,17 @@ public sealed class NugsMediaProvider : INugsProvider
                 _ => FileKind.Audio
             };
 
-            var nameParts = new List<string>
+            var filePath = fileKind switch
             {
-                SanitizePathSegment(discovery.Title)
+                FileKind.Audio => Path.Combine(baseFolder, BuildTrackFileName(item, preferences.PreferredAudioFormat)),
+                FileKind.Video => Path.Combine(baseFolder, BuildVideoFileName(discovery, preferences.PreferredVideoResolution)),
+                _ => Path.Combine(baseFolder, item.Kind == "metadata" ? "metadata.nfo" : "cover.jpg")
             };
-
-            if (item.Metadata.TryGetValue("trackNumber", out var trackNumber) && !string.IsNullOrWhiteSpace(trackNumber))
-            {
-                nameParts.Add(trackNumber.PadLeft(2, '0'));
-            }
-
-            nameParts.Add(SanitizePathSegment(item.DisplayName));
-
-            if (fileKind == FileKind.Audio && !string.IsNullOrWhiteSpace(preferences.PreferredAudioFormat))
-            {
-                nameParts.Add(SanitizePathSegment(preferences.PreferredAudioFormat));
-            }
-
-            if (fileKind == FileKind.Video && !string.IsNullOrWhiteSpace(preferences.PreferredVideoResolution))
-            {
-                nameParts.Add(SanitizePathSegment(preferences.PreferredVideoResolution));
-            }
 
             return new FileState(
                 Guid.NewGuid(),
                 Guid.Empty,
-                Path.Combine(new[] { preferences.OutputRoot }.Concat(nameParts).ToArray()),
+                filePath,
                 fileKind,
                 FileStatus.Partial,
                 0,
@@ -268,7 +254,7 @@ public sealed class NugsMediaProvider : INugsProvider
             expectedFiles.Add(new FileState(
                 Guid.NewGuid(),
                 Guid.Empty,
-                Path.Combine(preferences.OutputRoot, SanitizePathSegment(discovery.Title), "metadata.nfo"),
+                Path.Combine(baseFolder, "metadata.nfo"),
                 FileKind.Metadata,
                 FileStatus.Partial,
                 0,
@@ -282,7 +268,7 @@ public sealed class NugsMediaProvider : INugsProvider
             expectedFiles.Add(new FileState(
                 Guid.NewGuid(),
                 Guid.Empty,
-                Path.Combine(preferences.OutputRoot, SanitizePathSegment(discovery.Title), "cover.jpg"),
+                Path.Combine(baseFolder, "cover.jpg"),
                 FileKind.Artwork,
                 FileStatus.Partial,
                 0,
@@ -369,6 +355,49 @@ public sealed class NugsMediaProvider : INugsProvider
 
     private static string ExtractNumericId(string[] segments) =>
         segments.LastOrDefault(segment => segment.All(char.IsDigit)) ?? string.Empty;
+
+    private static string BuildBaseFolder(MediaDiscoveryResult discovery, DownloadPreferences preferences)
+    {
+        var parts = new List<string> { preferences.OutputRoot };
+
+        if (discovery.Metadata.ContainsKey("playlistId"))
+        {
+            parts.Add(SanitizePathSegment(discovery.Title));
+            return Path.Combine(parts.ToArray());
+        }
+
+        if (!string.IsNullOrWhiteSpace(discovery.ArtistName))
+        {
+            parts.Add(SanitizePathSegment(discovery.ArtistName));
+        }
+
+        parts.Add(SanitizePathSegment(discovery.Title));
+        return Path.Combine(parts.ToArray());
+    }
+
+    private static string BuildTrackFileName(MediaItem item, string? preferredAudioFormat)
+    {
+        var trackNumber = item.Metadata.TryGetValue("trackNumber", out var rawTrackNumber) && !string.IsNullOrWhiteSpace(rawTrackNumber)
+            ? rawTrackNumber.PadLeft(2, '0')
+            : (item.Index + 1).ToString("D2");
+
+        var extension = string.IsNullOrWhiteSpace(preferredAudioFormat)
+            ? string.Empty
+            : preferredAudioFormat.StartsWith('.')
+                ? preferredAudioFormat
+                : "." + SanitizePathSegment(preferredAudioFormat);
+
+        return $"{trackNumber}. {SanitizePathSegment(item.DisplayName)}{extension}";
+    }
+
+    private static string BuildVideoFileName(MediaDiscoveryResult discovery, string? preferredVideoResolution)
+    {
+        var resolution = string.IsNullOrWhiteSpace(preferredVideoResolution)
+            ? "auto"
+            : SanitizePathSegment(preferredVideoResolution);
+
+        return $"{SanitizePathSegment(discovery.Title)}_{resolution}.mp4";
+    }
 
     private static IReadOnlyList<MediaItem> SelectItems(MediaDiscoveryResult discovery, DownloadPreferences preferences)
     {

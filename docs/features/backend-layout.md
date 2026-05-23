@@ -5,7 +5,7 @@ owner: @codex
 priority: high
 complexity: 2
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-22
 tags: [feature, backend, layout]
 ---
 
@@ -13,20 +13,19 @@ tags: [feature, backend, layout]
 
 ## Summary
 
-The Go backend now lives under `src/` as the executable entrypoint for both CLI and UI modes.
+The active backend lives under `csharp/` as an ASP.NET Core solution.
 
 ## Current Flow
 
-- `src/main.go` parses config and routes into CLI or UI mode.
-- `src/pkg/config` owns config loading, CLI parsing, and defaults.
-- `src/pkg/server` serves the API and embedded UI.
-- `src/pkg/processor` orchestrates downloads and media handling.
-- `src/pkg/downloader` performs the fetch and resume logic.
-- `src/ui_embedded.go` embeds the built frontend from `src/ui/dist`.
+- `csharp/NugsDownloader.Web` hosts the web app, health checks, and UI.
+- `csharp/NugsDownloader.App` coordinates workflows and use cases.
+- `csharp/NugsDownloader.Infrastructure` handles providers, downloads, storage, and filesystem helpers.
+- `csharp/NugsDownloader.Domain` defines entities, value objects, and contracts.
+- `csharp/tests/NugsDownloader.Tests` covers workflow, repository, and UI-facing behavior.
 
 ## Checklist
 
-- [x] Backend entrypoint isolated under `src/`
-- [x] Build tooling points at `./src`
-- [x] Embedded UI path matches the backend directory
-- [x] Backend helper packages moved under `src/pkg/`
+- [x] Backend entrypoint moved to the C# web host
+- [x] Shared app logic split into App, Infrastructure, and Domain layers
+- [x] Persistence and workflow code live under the C# solution
+- [x] Legacy backend removed from the repository
