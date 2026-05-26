@@ -5,7 +5,7 @@ owner: @codex
 priority: high
 complexity: 2
 created: 2026-04-26
-updated: 2026-05-22
+updated: 2026-05-25
 tags: [documentation, Nugs-Downloader]
 ---
 
@@ -15,6 +15,7 @@ This folder tracks the active C# application surfaces and the cleanup work aroun
 
 ## Current Structure
 
+- [C# Multisite Rewrite](./csharp-multisite-rewrite.md)
 - [Backend Layout](./backend-layout.md)
 - [Web UI](./web-ui.md)
 - [Config and Hosting](./config-and-cli.md)

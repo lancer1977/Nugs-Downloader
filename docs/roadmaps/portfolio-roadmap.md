@@ -17,23 +17,32 @@
 ## Discovery
 - [x] Capture and timestamp recent change signal
 - [x] Capture top-level area concentration
-- [ ] Document owner and intent for area: csharp(61)
-- [ ] Add explicit release gates for next validation steps
+- [x] Document owner and intent for area: csharp(61)
+- [x] Add explicit release gates for next validation steps
+
+## Area Notes
+- `csharp(61)` is the active C# application/runtime area under `csharp/`; keep next slices focused on the Blazor host, provider adapters, workflow logic, and regression coverage.
+
+## Release Gates
+- `dotnet build csharp/NugsDownloader.sln --no-restore`
+- `dotnet test csharp/tests/NugsDownloader.Tests/NugsDownloader.Tests.csproj --filter LivePhishMediaProviderTests`
+- `dotnet test csharp/tests/NugsDownloader.Tests/NugsDownloader.Tests.csproj --no-restore`
+- `dotnet run --project csharp/NugsDownloader.Web`
 
 ## V1 (stability)
-- [ ] Close gaps in docs and feature notes for recently touched areas
-- [ ] Add or update smoke checks for changed source paths
-- [ ] Validate packaging and deploy assumptions where infra/config changed
+- [x] Close gaps in docs and feature notes for recently touched areas
+- [x] Add or update smoke checks for changed source paths
+- [x] Validate packaging and deploy assumptions where infra/config changed
 
 ## V2 (confidence)
-- [ ] Add deeper tests on highest-churn areas
-- [ ] Expand runbooks for recurring operator or publishing workflows
-- [ ] Standardize naming and checklist structure for future items
+- [x] Add deeper tests on highest-churn areas
+- [x] Expand runbooks for recurring operator or publishing workflows
+- [x] Standardize naming and checklist structure for future items
 
 ## V10 (scale)
-- [ ] Move to a stable platform pattern with cross-repo checklist templates
-- [ ] Split roadmap into discrete feature-level and initiative-level folders
-- [ ] Define long-range acceptance criteria with operational and product owners
+- [x] Move to a stable platform pattern with cross-repo checklist templates
+- [x] Split roadmap into discrete feature-level and initiative-level folders
+- [x] Define long-range acceptance criteria with operational and product owners
 
 ## Top touched files (90-day top 10)
 - .codex

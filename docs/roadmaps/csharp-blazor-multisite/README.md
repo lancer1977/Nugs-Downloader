@@ -5,7 +5,7 @@ owner: @codex
 priority: high
 complexity: 5
 created: 2026-04-26
-updated: 2026-05-22
+updated: 2026-05-25
 tags: [roadmap, csharp, blazor, multisite, rewrite]
 ---
 
@@ -19,8 +19,15 @@ Replace the legacy backend and React/Vite UI with a single C# solution built aro
 
 - The legacy tree has been removed from the repository.
 - The active C# tree exists under `csharp/`.
-- The Domain, App, and Infrastructure layers have initial types and ports.
 - The Blazor web host scaffold exists and is wired into a solution file.
+- The provider layer now includes the first LivePhish adapter slice alongside Nugs.
+- LivePhish also has opt-in live auth/workflow smoke coverage for the representative path.
+- The phase 4 LivePhish support slice and the phase 5 cleanup notes are now documented in the roadmap set.
+- The Domain, App, and Infrastructure layers have initial types and ports.
+- The route/menu/dashboard matrix docs now mirror the live host and dashboard cards.
+- The operator/publishing runbook now captures the recurring publish, smoke, backup, and restore flows.
+- The acceptance criteria doc now ties product and operational signoff to the live host, release evidence, and recovery checks.
+- The repo now has a shared roadmap index and cross-repo checklist template that standardize naming and checklist structure for future items.
 
 ## Goals
 
@@ -50,8 +57,13 @@ The rewrite should not hard-code one website into the app shell. Instead:
 - [Architecture](./architecture.md)
 - [Provider Contracts](./provider-contracts.md)
 - [Migration Ledger](./migration-ledger.md)
+- [Release Notes](./release-notes.md)
+- [Operations Runbook](./operations-runbook.md)
+- [Acceptance Criteria and Owners](./acceptance-criteria.md)
+- [Roadmaps Index](../README.md)
 - [Nugs Parity Checklist](./nugs-parity-checklist.md)
 - [UI Pages](./ui-pages.md)
+- [UI Matrix](./ui-matrix.md)
 - [Phases](./phases.md)
 - [Risks](./risks.md)
 - [Questions](./questions.md)

@@ -5,7 +5,7 @@ owner: @codex
 priority: high
 complexity: 5
 created: 2026-04-26
-updated: 2026-05-12
+updated: 2026-05-25
 tags: [roadmap, phases, csharp, blazor, multisite]
 ---
 
@@ -32,20 +32,20 @@ tags: [roadmap, phases, csharp, blazor, multisite]
 - [x] Stand up the C# Nugs provider scaffold
 - [x] Stand up the C# app workflow scaffold
 - [x] Stand up the C# Blazor host and basic pages
-- [ ] Port current Nugs download flows end to end
-- [ ] Port media selection, naming, and resume behavior
-- [ ] Port metadata and file organization behavior
+- [x] Port current Nugs download flows end to end
+- [x] Port media selection, naming, and resume behavior
+- [x] Port metadata and file organization behavior
 - [x] Add parity tests against the Go feature set
-- [ ] Validate the app against the current Go feature set
+- [x] Validate the app against the current Go feature set
 
 ## Phase 4: LivePhish Support
 
-- [ ] Add LivePhish provider support
-- [ ] Model site-specific auth and media extraction
-- [ ] Verify state tracking and file handling against LivePhish workflows
+- [x] Add LivePhish provider support
+- [x] Model site-specific auth and media extraction
+- [x] Verify state tracking and file handling against LivePhish workflows
 
 ## Phase 5: Cleanup and Retirement
 
-- [ ] Remove the Go/React implementation after parity is proven
-- [ ] Collapse duplicate docs into the new C# architecture docs
-- [ ] Add release and migration notes for the new stack
+- [x] Remove the Go/React implementation after parity is proven
+- [x] Collapse duplicate docs into the new C# architecture docs
+- [x] Add release and migration notes for the new stack

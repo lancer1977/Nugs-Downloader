@@ -5,7 +5,7 @@ owner: @codex
 priority: high
 complexity: 4
 created: 2026-04-26
-updated: 2026-05-22
+updated: 2026-05-25
 tags: [roadmap, migration, ledger, csharp]
 ---
 
@@ -55,4 +55,6 @@ tags: [roadmap, migration, ledger, csharp]
 4. Authentication and session setup
 5. Nugs download pipeline
 6. LivePhish provider
+
+The LivePhish provider slice is now present in the active C# host and remains on the same contract as Nugs.
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.FileProviders;
 using NugsDownloader.App.Abstractions;
 using NugsDownloader.App.UseCases;
 using NugsDownloader.Web.Health;
+using NugsDownloader.Infrastructure.Providers.LivePhish;
 using NugsDownloader.Infrastructure.Providers.Nugs;
 using NugsDownloader.Web.Components;
 using NugsDownloader.Web.Options;
@@ -27,6 +28,7 @@ builder.Services
 
 builder.Services.AddMudServices();
 builder.Services.AddSingleton<NugsDownloader.Domain.Providers.IMediaProvider, NugsMediaProvider>();
+builder.Services.AddSingleton<NugsDownloader.Domain.Providers.IMediaProvider, LivePhishMediaProvider>();
 builder.Services.AddSingleton<IProviderCatalog, InMemoryProviderCatalog>(sp =>
     new InMemoryProviderCatalog(sp.GetServices<NugsDownloader.Domain.Providers.IMediaProvider>()));
 builder.Services.AddSingleton<SqliteStorePaths>();

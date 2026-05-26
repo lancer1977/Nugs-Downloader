@@ -37,6 +37,21 @@ public class WebIntegrationTests
     }
 
     [Fact]
+    public async Task WebHost_RendersPrimaryNavigationLinks()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var body = await client.GetStringAsync("/");
+
+        Assert.Contains("Dashboard", body);
+        Assert.Contains("Queue", body);
+        Assert.Contains("Login", body);
+        Assert.Contains("Files", body);
+        Assert.Contains("Providers", body);
+    }
+
+    [Fact]
     public async Task WebHost_RendersInteractiveServerMarkers()
     {
         await using var factory = new TestWebApplicationFactory();

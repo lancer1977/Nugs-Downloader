@@ -34,6 +34,10 @@ public class ComponentTests : BunitContext
         Assert.Contains("/login", cut.Markup);
         Assert.Contains("/file-state", cut.Markup);
         Assert.Contains("/provider-settings", cut.Markup);
+        Assert.Contains("Providers", cut.Markup);
+        Assert.Contains("Jobs", cut.Markup);
+        Assert.Contains("Recent Activity", cut.Markup);
+        Assert.Contains("File State Snapshot", cut.Markup);
         Assert.Contains(provider.DisplayName, cut.Markup);
         Assert.Contains("resume", cut.Markup);
         Assert.Contains("Recent Activity", cut.Markup);

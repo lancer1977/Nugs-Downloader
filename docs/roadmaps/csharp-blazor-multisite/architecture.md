@@ -260,4 +260,4 @@ dotnet new xunit -n NugsDownloader.Infrastructure.Tests -o tests/NugsDownloader.
 2. Add `App` ports and use cases.
 3. Add `Infrastructure` implementations for SQLite, crypto, HTTP, and providers.
 4. Build `Web` on top of the app services.
-5. Port Nugs end to end before adding LivePhish.
+5. Port Nugs end to end first, then add LivePhish through the same provider contract.
