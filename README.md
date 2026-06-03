@@ -2,6 +2,15 @@
 
 The active Nugs application lives in `csharp/` as a .NET 10 solution with a Blazor web UI.
 
+## Tags
+
+- nugs-downloader
+- dotnet
+- docs
+- nugs
+- downloader
+- website
+
 ## Layout
 
 - `csharp/` - active solution, web host, application logic, infrastructure, and tests
