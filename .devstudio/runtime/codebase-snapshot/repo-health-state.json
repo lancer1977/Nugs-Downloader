@@ -1,0 +1,97 @@
+{
+  "delivery": {
+    "changed": false,
+    "enabled": false,
+    "policy": "never",
+    "sent": false,
+    "state_file": "/mnt/data/lancer1977/code/Nugs-Downloader/.devstudio/runtime/codebase-snapshot/repo-health-state.json"
+  },
+  "report_signature": "63043353a7ba5720bb755facb4510aeebdc7ac8eca01202477fe914b3459b1e5",
+  "summary": {
+    "artifact_attention": 0,
+    "backlog_attention": 0,
+    "branch_attention": 0,
+    "ci_attention": 0,
+    "dependency_warn": 1,
+    "dependency_watch": 0,
+    "dirty_attention": 0,
+    "docs_attention": 1,
+    "focus_roots": [
+      "/mnt/data/lancer1977/code/Nugs-Downloader"
+    ],
+    "freshness_attention": 0,
+    "reviewed": 1,
+    "scanned_total": 1,
+    "scope_matched": 1,
+    "tests_attention": 1
+  },
+  "top_recommendations": [
+    {
+      "dependency_health": {
+        "ecosystems": [
+          {
+            "ecosystem": "dotnet",
+            "lockfile_drift_days": null,
+            "lockfile_mtime": null,
+            "lockfile_stale": false,
+            "lockfiles": [],
+            "manifest_mtime": 1779499783.0584183,
+            "manifests": [
+              "csharp/NugsDownloader.App/NugsDownloader.App.csproj",
+              "csharp/NugsDownloader.Domain/NugsDownloader.Domain.csproj",
+              "csharp/NugsDownloader.Infrastructure/NugsDownloader.Infrastructure.csproj",
+              "csharp/NugsDownloader.Web/NugsDownloader.Web.csproj",
+              "csharp/tests/NugsDownloader.Tests/NugsDownloader.Tests.csproj"
+            ],
+            "package_manager": "dotnet",
+            "recommendation": "No obvious .NET lock or central-version file is present; run `dotnet list package --outdated` and decide whether this repo should adopt central package management before the next slice.",
+            "status": "warn"
+          }
+        ],
+        "recommendations": [
+          "No obvious .NET lock or central-version file is present; run `dotnet list package --outdated` and decide whether this repo should adopt central package management before the next slice."
+        ],
+        "status": "warn"
+      },
+      "dirty_worktree": {
+        "artifact_changes": 0,
+        "artifact_paths": [],
+        "changes": 0,
+        "dirty": false,
+        "recommendations": [],
+        "status": "ok",
+        "untracked": 0
+      },
+      "dirty_worktree_artifact_changes": 0,
+      "dirty_worktree_artifact_paths": [],
+      "doc_health": "ok",
+      "freshness_pressure": 0,
+      "freshness_signals": [],
+      "issues": [
+        "missing_recommended:.env.example",
+        "missing_recommended:runtime",
+        "missing_recommended:templates"
+      ],
+      "open_cards_total": 0,
+      "path": "/mnt/data/lancer1977/code/Nugs-Downloader",
+      "priority_score": 60,
+      "rank": 1,
+      "readiness": "in_progress",
+      "readiness_score": 78,
+      "recommendations": [
+        "Restore the required docs spine and make the repo's purpose/setup easy to find again.",
+        "Repair or document the native test command so the repo has a trusted validation path.",
+        "No obvious .NET lock or central-version file is present; run `dotnet list package --outdated` and decide whether this repo should adopt central package management before the next slice."
+      ],
+      "signal_count": 3,
+      "source_priority": 1,
+      "test_health": "warn",
+      "themes": [
+        "dependencies",
+        "docs",
+        "tests"
+      ]
+    }
+  ],
+  "updated_at": "2026-06-23T17:09:49.715070+00:00"
+}
