@@ -1,12 +1,40 @@
-name: change-me
-repo_root: change-me
+schema: 1
 
-languages: []
-frameworks: []
+project:
+  name: Nugs-Downloader
+  kind: dotnet-webapp
+  owner: lancer1977
+
+languages:
+  - csharp
+  - shell
+
+frameworks:
+  - dotnet
+  - blazor
+  - mudblazor
+  - sqlite
+  - xunit
+  - ffmpeg
 
 ci:
-  build: []
-  test: []
+  restore:
+    - dotnet restore csharp/NugsDownloader.sln
+  build:
+    - dotnet build csharp/NugsDownloader.sln --no-restore -m:1
+  test:
+    - dotnet test csharp/NugsDownloader.sln --no-restore -m:1 -p:UseSharedCompilation=false --logger "console;verbosity=minimal"
+
+docs:
+  index: docs/README.md
+  features: docs/features/README.md
+  roadmaps: docs/roadmaps/README.md
+  deployment: deploy/portainer/r620/README.md
+  active_app: csharp/README.md
+
+tracking:
+  primary: repo-local
+  current_work: 00_agile/dashboard.md
 
 devstudio:
   runtime_model: three-agent
