@@ -91,6 +91,18 @@ public sealed class LivePhishApiClient
         return await JsonSerializer.DeserializeAsync<AlbumMeta>(await response.Content.ReadAsStreamAsync(ct), JsonOptions, ct);
     }
 
+    public async Task DownloadFileAsync(Uri mediaUri, Stream destination, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, mediaUri);
+        request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        await using var source = await response.Content.ReadAsStreamAsync(ct);
+        await source.CopyToAsync(destination, ct);
+    }
+
     private static HttpClient CreateClient()
     {
         var handler = new HttpClientHandler
@@ -107,5 +119,5 @@ public sealed class LivePhishApiClient
     public sealed record UserInfo(string Sub);
     public sealed record AlbumMeta(AlbumMetaBody? Response);
     public sealed record AlbumMetaBody(string ArtistName, string ContainerInfo, string? ContainerTypeStr, List<Track> Tracks);
-    public sealed record Track(int TrackID, string SongTitle);
+    public sealed record Track(int TrackID, string SongTitle, string? ClipURL = null);
 }

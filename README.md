@@ -35,6 +35,14 @@ dotnet build csharp/NugsDownloader.sln
 dotnet test csharp/NugsDownloader.sln
 ```
 
+### Live media smoke
+
+The live smoke uses `/home/lancer1977/.config/secrets/nugs-downloader.env` by default and must never print credentials or tokens. It writes to a temporary output root, verifies at least one Nugs media file contains bytes, then cleans the temp directory.
+
+```bash
+NUGS_LIVE_TESTS=1 dotnet test csharp/NugsDownloader.sln --filter LiveNugsWorkflowTests
+```
+
 ## Run
 
 ```bash
@@ -68,4 +76,5 @@ make lint
 
 - The legacy Go backend and embedded React/Vite UI have been removed.
 - The Portainer deployment targets the C# web app.
-- FFmpeg is required for media workflows and HLS-to-MP4 conversion.
+- Audio jobs now write provider media bytes, metadata sidecars, and byte counts into file state; video/HLS expansion still requires the provider-specific stream URL plus FFmpeg processing.
+- FFmpeg is required for video workflows and HLS-to-MP4 conversion.

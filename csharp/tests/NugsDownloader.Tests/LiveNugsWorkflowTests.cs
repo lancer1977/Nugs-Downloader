@@ -36,15 +36,25 @@ public sealed class LiveNugsWorkflowTests
         var vault = new MemorySecretVault();
         var workflow = new DownloadWorkflow(catalog, jobs, states, creds, vault);
 
-        var request = new StartDownloadRequest(
-            null,
-            provider.Id,
-            new Uri(GetValue(EnvironmentVariables(), "NUGS_LIVE_DOWNLOAD_URL") ?? DefaultLiveUrl),
-            new Credentials(secrets.Username!, secrets.Password!, secrets.Token, "Live integration"),
-            new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true));
+        var outputRoot = Path.Combine(Path.GetTempPath(), "nugs-live-smoke-" + Guid.NewGuid().ToString("N"));
+        StartDownloadResult result;
+        RecordingProgress<DownloadProgress> progress;
+        try
+        {
+            var request = new StartDownloadRequest(
+                null,
+                provider.Id,
+                new Uri(GetValue(EnvironmentVariables(), "NUGS_LIVE_DOWNLOAD_URL") ?? DefaultLiveUrl),
+                new Credentials(secrets.Username!, secrets.Password!, secrets.Token, "Live integration"),
+                new DownloadPreferences("flac", "1080p", false, false, false, outputRoot, true, false));
 
-        var progress = new RecordingProgress<DownloadProgress>();
-        var result = await workflow.StartAsync(request, progress, CancellationToken.None);
+            progress = new RecordingProgress<DownloadProgress>();
+            result = await workflow.StartAsync(request, progress, CancellationToken.None);
+        }
+        finally
+        {
+            // Kept until after assertions below; cleaned at end of test.
+        }
 
         Assert.Equal("Completed", result.Status);
         Assert.Contains("Processed", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -62,13 +72,20 @@ public sealed class LiveNugsWorkflowTests
         {
             Assert.Equal(result.JobId, state.JobId);
             Assert.Equal(FileStatus.Complete, state.Status);
-            Assert.Equal("Downloads", state.FilePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).First());
+            Assert.StartsWith(outputRoot, state.FilePath, StringComparison.OrdinalIgnoreCase);
+            Assert.True(File.Exists(state.FilePath), $"Expected downloaded output file {state.FilePath} to exist.");
+            Assert.True(state.ActualSize > 0, $"Expected downloaded output file {state.FilePath} to contain bytes.");
         });
 
         Assert.Equal(provider.Id, account.ProviderId);
         Assert.Equal("Live integration", account.Label);
         Assert.False(string.IsNullOrWhiteSpace(account.SecretRef));
         Assert.False(string.IsNullOrWhiteSpace(await vault.GetAsync(account.SecretRef, CancellationToken.None)));
+
+        if (Directory.Exists(outputRoot))
+        {
+            Directory.Delete(outputRoot, recursive: true);
+        }
     }
 
     private static IReadOnlyDictionary<string, string?> EnvironmentVariables()

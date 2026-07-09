@@ -23,6 +23,8 @@ The UI is a Blazor Server app hosted by `csharp/NugsDownloader.Web`.
 - Primary pages include login, queue, help, job details, provider settings, and file state
 - `nugs.polyhydragames.com` is LAN-only/internal-only; keep DNS and Traefik routing scoped to the LAN
 - Static art assets live under `wwwroot/assets` and are used by the dashboard hero, app icon, and empty states
+- Job Details and File State show actual downloaded byte counts when provider execution writes files to disk
+- Live media smoke: `NUGS_LIVE_TESTS=1 dotnet test csharp/NugsDownloader.sln --filter LiveNugsWorkflowTests`; this uses local secrets, writes to a temp directory, verifies output bytes, and must keep secrets out of logs
 
 ## Cleanup Checklist
 
