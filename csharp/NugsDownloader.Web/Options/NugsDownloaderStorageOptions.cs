@@ -4,6 +4,7 @@ public sealed class NugsDownloaderStorageOptions
 {
     public string StateDirectory { get; set; } = Path.Combine(AppContext.BaseDirectory, "state");
     public string DownloadDirectory { get; set; } = Path.Combine(AppContext.BaseDirectory, "downloads");
+    public long MinimumFreeBytes { get; set; } = 1024L * 1024L * 1024L;
 
     public string GetStateDirectory() => Normalize(StateDirectory);
 

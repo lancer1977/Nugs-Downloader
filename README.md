@@ -53,6 +53,12 @@ dotnet run --project csharp/NugsDownloader.Web
 
 The app reads configuration from the `NugsDownloader` settings section and persists runtime state under the configured state directory. See the feature docs and deployment notes for the current paths and environment variables.
 
+Key settings:
+
+- `NugsDownloader__StateDirectory` - app database, job state, credentials, and data-protection keys.
+- `NugsDownloader__DownloadDirectory` - downloaded media archive root.
+- `NugsDownloader__MinimumFreeBytes` - readiness threshold for free space on the downloads filesystem; defaults to 1 GiB.
+
 ## Common Commands
 
 ```bash

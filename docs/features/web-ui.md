@@ -26,6 +26,7 @@ The UI is a Blazor Server app hosted by `csharp/NugsDownloader.Web`.
 - Job Details and File State show actual downloaded byte counts when provider execution writes files to disk
 - Live media smoke: `NUGS_LIVE_TESTS=1 dotnet test csharp/NugsDownloader.sln --filter LiveNugsWorkflowTests`; this uses local secrets, writes to a temp directory, verifies output bytes, and must keep secrets out of logs
 - The Queue page labels production support honestly: Nugs audio is byte-smoked; video/HLS and LivePhish byte downloads remain disabled/labelled until implemented end-to-end
+- `/health/ready` checks that state and download directories are writable and that the download filesystem has at least `NugsDownloader__MinimumFreeBytes` free; the default threshold is 1 GiB
 
 ## Cleanup Checklist
 
