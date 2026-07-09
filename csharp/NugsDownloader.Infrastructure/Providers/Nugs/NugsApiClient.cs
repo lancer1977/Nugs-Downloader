@@ -161,6 +161,18 @@ public sealed class NugsApiClient
         return await JsonSerializer.DeserializeAsync<PlistMeta>(await response.Content.ReadAsStreamAsync(ct), JsonOptions, ct);
     }
 
+    public async Task DownloadFileAsync(Uri mediaUri, Stream destination, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, mediaUri);
+        request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        await using var source = await response.Content.ReadAsStreamAsync(ct);
+        await source.CopyToAsync(destination, ct);
+    }
+
     private static HttpClient CreateClient()
     {
         var handler = new HttpClientHandler
@@ -187,5 +199,5 @@ public sealed class NugsApiClient
     public sealed record PlistMeta(PlistBody? Response);
     public sealed record PlistBody(string PlayListName, List<PlistItemBody> Items);
     public sealed record PlistItemBody(Track Track);
-    public sealed record Track(int TrackID, string SongTitle);
+    public sealed record Track(int TrackID, string SongTitle, string? ClipURL = null);
 }

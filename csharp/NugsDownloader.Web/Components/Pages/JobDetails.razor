@@ -23,6 +23,7 @@ else
     <p><strong>Title:</strong> @_job.DisplayName</p>
     <p><strong>Canonical Source:</strong> @_job.SourceUrl</p>
     <p><strong>Expected Files:</strong> @_fileStates.Count</p>
+    <p><strong>Downloaded Bytes:</strong> @FormatBytes(_fileStates.Sum(state => state.ActualSize))</p>
     <p><strong>Audio:</strong> @_fileStates.Count(state => state.Kind == FileKind.Audio)</p>
     <p><strong>Video:</strong> @_fileStates.Count(state => state.Kind == FileKind.Video)</p>
 
@@ -40,7 +41,7 @@ else
     <ul>
         @foreach (var state in _fileStates)
         {
-            <li>@state.FilePath - @state.Status - @state.Kind</li>
+            <li>@state.FilePath - @state.Status - @state.Kind - @FormatBytes(state.ActualSize)</li>
         }
     </ul>
 }
@@ -73,5 +74,24 @@ else
         var result = await DownloadWorkflow.RetryAsync(JobId, CancellationToken.None);
         _message = $"{result.Status}: {result.Message}";
         await OnParametersSetAsync();
+    }
+
+    private static string FormatBytes(long value)
+    {
+        if (value < 1024)
+        {
+            return $"{value} B";
+        }
+
+        var units = new[] { "KB", "MB", "GB", "TB" };
+        var size = value / 1024d;
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+
+        return $"{size:0.##} {units[unit]}";
     }
 }

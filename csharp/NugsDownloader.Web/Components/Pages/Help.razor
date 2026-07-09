@@ -1,0 +1,47 @@
+@page "/help"
+
+<h1>How to use NugsDownloader</h1>
+<p class="nugs-lan-badge">LAN-only internal tool</p>
+<p>NugsDownloader is for private homelab use on the LAN. It is intentionally not exposed through public DNS because it handles provider credentials, download jobs, and local archive paths.</p>
+
+<div class="nugs-link-row">
+    <a href="/">Dashboard</a>
+    <a href="/queue">Queue</a>
+    <a href="/login">Login</a>
+    <a href="/file-state">File State</a>
+    <a href="/provider-settings">Provider Settings</a>
+</div>
+
+<section class="nugs-help-grid">
+    <article>
+        <span>1</span>
+        <h2>Save credentials</h2>
+        <p>Open Login, choose Nugs or LivePhish, authenticate with password or token, and save the account under a memorable label.</p>
+    </article>
+    <article>
+        <span>2</span>
+        <h2>Queue a release</h2>
+        <p>Open Queue, paste a release/show URL, pick the saved account, choose audio/video preferences, then start the download.</p>
+    </article>
+    <article>
+        <span>3</span>
+        <h2>Track files</h2>
+        <p>Use Dashboard, Job Details, and File State to see discovery results, expected files, output paths, and completed or partial downloads.</p>
+    </article>
+    <article>
+        <span>4</span>
+        <h2>Resume or retry</h2>
+        <p>If a job is interrupted, open its Job Details page and use Resume or Retry instead of starting from scratch.</p>
+    </article>
+</section>
+
+<h2>Where downloads land</h2>
+<p>The live container writes downloads to <code>/downloads</code>, backed by the Docker volume <code>nugs-downloader-downloads</code>. Runtime state is stored separately in <code>nugs-downloader-state</code>.</p>
+
+<h2>Security boundary</h2>
+<ul>
+    <li>Keep the hostname LAN-only.</li>
+    <li>Do not add public DNS for <code>nugs.polyhydragames.com</code>.</li>
+    <li>Keep Traefik's internal IP whitelist enabled.</li>
+    <li>Do not paste provider tokens into chat or issue bodies.</li>
+</ul>

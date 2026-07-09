@@ -1,6 +1,7 @@
 using NugsDownloader.Domain.Entities;
 using NugsDownloader.Domain.Providers;
 using NugsDownloader.Domain.ValueObjects;
+using System.Text;
 
 namespace NugsDownloader.Infrastructure.Providers.Nugs;
 
@@ -105,11 +106,7 @@ public sealed class NugsMediaProvider : INugsProvider
                                 DisplayName: track.SongTitle,
                                 Kind: "audio",
                                 Index: index,
-                                Metadata: new Dictionary<string, string>
-                                {
-                                    ["trackId"] = track.TrackID.ToString(),
-                                    ["title"] = track.SongTitle
-                                })).ToArray();
+                                Metadata: BuildTrackMetadata(track, index))).ToArray();
                         }
                     }
                     break;
@@ -131,11 +128,7 @@ public sealed class NugsMediaProvider : INugsProvider
                                 DisplayName: track.SongTitle,
                                 Kind: "audio",
                                 Index: index,
-                                Metadata: new Dictionary<string, string>
-                                {
-                                    ["trackId"] = track.TrackID.ToString(),
-                                    ["title"] = track.SongTitle
-                                })).ToArray();
+                                Metadata: BuildTrackMetadata(track, index))).ToArray();
                         }
                     }
                     break;
@@ -155,11 +148,7 @@ public sealed class NugsMediaProvider : INugsProvider
                                 DisplayName: item.Track.SongTitle,
                                 Kind: "audio",
                                 Index: index,
-                                Metadata: new Dictionary<string, string>
-                                {
-                                    ["trackId"] = item.Track.TrackID.ToString(),
-                                    ["title"] = item.Track.SongTitle
-                                })).ToArray();
+                                Metadata: BuildTrackMetadata(item.Track, index))).ToArray();
                         }
                     }
                     break;
@@ -287,7 +276,7 @@ public sealed class NugsMediaProvider : INugsProvider
             ResumeState: discovery.Metadata));
     }
 
-    public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct)
+    public async Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -295,12 +284,17 @@ public sealed class NugsMediaProvider : INugsProvider
         if (totalItems == 0)
         {
             progress.Report(new DownloadProgress(plan.JobId, plan.ProviderId, 0, 0, 100, 0, 0, $"No items to download for {plan.ProviderId}."));
-            return Task.CompletedTask;
+            return;
         }
 
         for (var index = 0; index < totalItems; index++)
         {
             ct.ThrowIfCancellationRequested();
+
+            if (index < plan.ExpectedFiles.Count)
+            {
+                await WriteExpectedFileAsync(plan, index, ct);
+            }
 
             var currentItem = index + 1;
             var percent = (int)Math.Round((double)currentItem / totalItems * 100, MidpointRounding.AwayFromZero);
@@ -312,10 +306,94 @@ public sealed class NugsMediaProvider : INugsProvider
                 percent,
                 currentItem,
                 plan.Items.Count,
-                $"Prepared {currentItem}/{totalItems} item(s) for {plan.ProviderId}."));
+                $"Downloaded {currentItem}/{totalItems} file(s) for {plan.ProviderId}."));
+        }
+    }
+
+    private async Task WriteExpectedFileAsync(DownloadPlan plan, int index, CancellationToken ct)
+    {
+        var expectedFile = plan.ExpectedFiles[index];
+        var item = index < plan.Items.Count ? plan.Items[index] : null;
+        var targetPath = Path.GetFullPath(expectedFile.FilePath);
+        var directory = Path.GetDirectoryName(targetPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
         }
 
-        return Task.CompletedTask;
+        switch (expectedFile.Kind)
+        {
+            case FileKind.Audio:
+            case FileKind.Video:
+                var mediaUri = ResolveMediaUri(item);
+                if (mediaUri is null)
+                {
+                    throw new InvalidOperationException($"No media URL is available for {expectedFile.Kind.ToString().ToLowerInvariant()} item {item?.Id ?? index.ToString()}.");
+                }
+
+                await using (var destination = File.Create(targetPath))
+                {
+                    await _apiClient.DownloadFileAsync(mediaUri, destination, ct);
+                }
+                break;
+            case FileKind.Metadata:
+                await File.WriteAllTextAsync(targetPath, BuildMetadataFile(plan), Encoding.UTF8, ct);
+                break;
+            case FileKind.Artwork:
+                var artworkUri = ResolveMetadataUri(plan.ResumeState, "artworkUrl", "coverUrl", "imageUrl");
+                if (artworkUri is not null)
+                {
+                    await using var destination = File.Create(targetPath);
+                    await _apiClient.DownloadFileAsync(artworkUri, destination, ct);
+                }
+                else
+                {
+                    await File.WriteAllTextAsync(targetPath, "Artwork unavailable for this Nugs item.", Encoding.UTF8, ct);
+                }
+                break;
+        }
+    }
+
+    private static Uri? ResolveMediaUri(MediaItem? item)
+    {
+        if (item is null)
+        {
+            return null;
+        }
+
+        return ResolveMetadataUri(item.Metadata, "downloadUrl", "mediaUrl", "streamUrl", "clipUrl", "clipURL", "url");
+    }
+
+    private static Uri? ResolveMetadataUri(object? metadata, params string[] keys)
+    {
+        if (metadata is not IReadOnlyDictionary<string, string> values)
+        {
+            return null;
+        }
+
+        foreach (var key in keys)
+        {
+            if (values.TryGetValue(key, out var value) && Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                return uri;
+            }
+        }
+
+        return null;
+    }
+
+    private static string BuildMetadataFile(DownloadPlan plan)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Nugs download metadata");
+        builder.AppendLine($"Provider: {plan.ProviderId}");
+        builder.AppendLine($"Items: {plan.Items.Count}");
+        foreach (var item in plan.Items)
+        {
+            builder.AppendLine($"- {item.Index + 1}. {item.DisplayName} ({item.Kind})");
+        }
+
+        return builder.ToString();
     }
 
     private static string ResolveKind(string[] segments)
@@ -355,6 +433,23 @@ public sealed class NugsMediaProvider : INugsProvider
 
     private static string ExtractNumericId(string[] segments) =>
         segments.LastOrDefault(segment => segment.All(char.IsDigit)) ?? string.Empty;
+
+    private static Dictionary<string, string> BuildTrackMetadata(NugsApiClient.Track track, int index)
+    {
+        var metadata = new Dictionary<string, string>
+        {
+            ["trackId"] = track.TrackID.ToString(),
+            ["title"] = track.SongTitle,
+            ["trackNumber"] = (index + 1).ToString()
+        };
+
+        if (!string.IsNullOrWhiteSpace(track.ClipURL))
+        {
+            metadata["clipUrl"] = track.ClipURL;
+        }
+
+        return metadata;
+    }
 
     private static string BuildBaseFolder(MediaDiscoveryResult discovery, DownloadPreferences preferences)
     {

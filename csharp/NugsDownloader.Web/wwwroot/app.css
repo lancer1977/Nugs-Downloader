@@ -25,6 +25,29 @@ body {
 
 .nugs-appbar {
     border-bottom: 1px solid #24303d;
+    background:
+        linear-gradient(90deg, rgba(13, 148, 136, 0.28), rgba(17, 24, 39, 0.94)),
+        #111827;
+}
+
+.nugs-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: #f8fafc;
+    text-decoration: none;
+}
+
+.nugs-brand:hover {
+    color: #f8fafc;
+    text-decoration: none;
+}
+
+.nugs-brand img {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.28), 0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
 .nugs-main {
@@ -71,6 +94,7 @@ a:hover {
     text-decoration: underline;
 }
 
+.nugs-link-row,
 .nugs-content > div:has(> a) {
     display: flex;
     flex-wrap: wrap;
@@ -80,6 +104,7 @@ a:hover {
     color: transparent;
 }
 
+.nugs-link-row a,
 .nugs-content > div:has(> a) a {
     display: inline-flex;
     align-items: center;
@@ -180,6 +205,262 @@ form button:hover,
 
 strong {
     color: #f8fafc;
+}
+
+.nugs-hero-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+    gap: 28px;
+    align-items: stretch;
+    min-height: 340px;
+    margin-bottom: 22px;
+    padding: 32px;
+    overflow: hidden;
+    border: 1px solid rgba(94, 234, 212, 0.18);
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at 20% 10%, rgba(45, 212, 191, 0.20), transparent 32%),
+        linear-gradient(135deg, rgba(12, 18, 26, 0.98), rgba(17, 24, 39, 0.86));
+    box-shadow: 0 28px 72px rgba(0, 0, 0, 0.35);
+}
+
+.nugs-hero-copy {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 620px;
+}
+
+.nugs-eyebrow {
+    margin: 0 0 10px;
+    color: #5eead4;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.nugs-hero-card h1 {
+    margin: 0;
+    font-size: clamp(2.4rem, 6vw, 4.8rem);
+    line-height: 0.95;
+    letter-spacing: -0.05em;
+}
+
+.nugs-hero-lede {
+    max-width: 540px;
+    margin: 18px 0 0;
+    color: #d4dee9;
+    font-size: 1.08rem;
+    line-height: 1.65;
+}
+
+.nugs-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 26px;
+}
+
+.nugs-primary-link,
+.nugs-secondary-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 999px;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.nugs-primary-link {
+    background: #2dd4bf;
+    color: #041512;
+    box-shadow: 0 14px 30px rgba(45, 212, 191, 0.22);
+}
+
+.nugs-secondary-link {
+    border: 1px solid rgba(94, 234, 212, 0.34);
+    background: rgba(15, 23, 42, 0.62);
+    color: #ccfbf1;
+}
+
+.nugs-primary-link:hover,
+.nugs-secondary-link:hover {
+    text-decoration: none;
+    transform: translateY(-1px);
+}
+
+.nugs-hero-art {
+    min-height: 276px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    background:
+        linear-gradient(90deg, rgba(16, 20, 24, 0.18), rgba(16, 20, 24, 0.05)),
+        url("assets/nugs-hero.png") center / cover no-repeat;
+    box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.30), 0 18px 60px rgba(0, 0, 0, 0.30);
+}
+
+.nugs-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin: 18px 0 8px;
+}
+
+.nugs-metrics div {
+    padding: 18px;
+    border: 1px solid #2f3a47;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(27, 34, 43, 0.95), rgba(17, 24, 39, 0.95));
+}
+
+.nugs-metrics span {
+    display: block;
+    color: #5eead4;
+    font-size: 2rem;
+    font-weight: 850;
+    line-height: 1;
+}
+
+.nugs-metrics strong {
+    display: block;
+    margin-top: 8px;
+    color: #b8c4d4;
+    font-size: 0.84rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.nugs-empty-state {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 20px;
+    align-items: center;
+    max-width: 760px;
+    margin: 12px 0 22px;
+    padding: 16px;
+    border: 1px solid rgba(94, 234, 212, 0.16);
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(27, 34, 43, 0.95), rgba(15, 23, 42, 0.92));
+}
+
+.nugs-empty-state img {
+    width: 100%;
+    border-radius: 12px;
+    object-fit: cover;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+}
+
+.nugs-empty-state p {
+    margin-bottom: 0;
+}
+
+.nugs-lan-badge {
+    display: inline-flex;
+    width: fit-content;
+    margin: 4px 0 14px;
+    padding: 7px 12px;
+    border: 1px solid rgba(245, 158, 11, 0.38);
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.10);
+    color: #fbbf24;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.nugs-queue-guide,
+.nugs-help-grid article,
+.nugs-credential-card {
+    border: 1px solid rgba(94, 234, 212, 0.16);
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(27, 34, 43, 0.94), rgba(15, 23, 42, 0.92));
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+
+.nugs-queue-guide {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 16px 0 18px;
+    padding: 20px;
+}
+
+.nugs-queue-guide h2,
+.nugs-credential-card h2,
+.nugs-help-grid h2 {
+    margin-top: 0;
+}
+
+.nugs-queue-guide p:last-child,
+.nugs-help-grid p:last-child {
+    margin-bottom: 0;
+}
+
+.nugs-credential-card {
+    max-width: 720px;
+    margin: 18px 0;
+    padding: 18px;
+}
+
+.nugs-help-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin: 24px 0;
+}
+
+.nugs-help-grid article {
+    padding: 18px;
+}
+
+.nugs-help-grid span {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: #2dd4bf;
+    color: #041512;
+    font-weight: 900;
+}
+
+code {
+    padding: 2px 6px;
+    border: 1px solid #2f3a47;
+    border-radius: 6px;
+    background: #0f172a;
+    color: #ccfbf1;
+}
+
+@media (max-width: 980px) {
+    .nugs-help-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 860px) {
+    .nugs-hero-card {
+        grid-template-columns: 1fr;
+        padding: 24px;
+    }
+
+    .nugs-hero-art {
+        min-height: 220px;
+    }
+
+    .nugs-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .nugs-empty-state {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 720px) {

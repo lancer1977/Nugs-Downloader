@@ -44,6 +44,16 @@ builder.Services
 
 var app = builder.Build();
 
+var aspNetCoreFrameworkAssets = ResolveAspNetCoreFrameworkAssetsPath();
+if (aspNetCoreFrameworkAssets is not null)
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(aspNetCoreFrameworkAssets),
+        RequestPath = "/_framework"
+    });
+}
+
 var mudBlazorStaticAssets = ResolveMudBlazorStaticAssetsPath();
 if (mudBlazorStaticAssets is not null)
 {
@@ -66,6 +76,31 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 });
 
 app.Run();
+
+static string? ResolveAspNetCoreFrameworkAssetsPath()
+{
+    var version = typeof(Microsoft.AspNetCore.Components.ComponentBase)
+        .Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+        ?.InformationalVersion
+        .Split('+', StringSplitOptions.RemoveEmptyEntries)
+        .FirstOrDefault();
+
+    if (string.IsNullOrWhiteSpace(version))
+    {
+        return null;
+    }
+
+    var packageRoot = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".nuget",
+        "packages",
+        "microsoft.aspnetcore.app.internal.assets",
+        version,
+        "_framework");
+
+    return Directory.Exists(packageRoot) ? packageRoot : null;
+}
 
 static string? ResolveMudBlazorStaticAssetsPath()
 {

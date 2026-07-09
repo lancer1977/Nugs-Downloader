@@ -129,10 +129,16 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
 
             foreach (var expectedFile in plan.ExpectedFiles)
             {
+                var actualFile = File.Exists(expectedFile.FilePath)
+                    ? new FileInfo(expectedFile.FilePath)
+                    : null;
+
                 await _fileStateRepository.SaveAsync(expectedFile with
                 {
                     JobId = jobId,
                     Status = FileStatus.Complete,
+                    ActualSize = actualFile?.Length ?? expectedFile.ActualSize,
+                    ExpectedSize = actualFile?.Length ?? expectedFile.ExpectedSize,
                     LastVerifiedAt = DateTimeOffset.UtcNow
                 }, ct);
             }

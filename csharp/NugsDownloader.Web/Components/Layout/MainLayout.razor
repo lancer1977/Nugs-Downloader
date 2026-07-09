@@ -7,13 +7,17 @@
 
 <MudLayout Class="nugs-shell">
     <MudAppBar Color="Color.Primary" Elevation="1" Dense="true" Class="nugs-appbar">
-        <MudText Typo="Typo.h6">NugsDownloader</MudText>
+        <a class="nugs-brand" href="/" aria-label="NugsDownloader dashboard">
+            <img src="assets/nugs-icon.png" alt="" />
+            <MudText Typo="Typo.h6">NugsDownloader</MudText>
+        </a>
         <MudSpacer />
         <MudButton Href="/" Color="Color.Inherit" Variant="Variant.Text">Dashboard</MudButton>
         <MudButton Href="/queue" Color="Color.Inherit" Variant="Variant.Text">Queue</MudButton>
         <MudButton Href="/login" Color="Color.Inherit" Variant="Variant.Text">Login</MudButton>
         <MudButton Href="/file-state" Color="Color.Inherit" Variant="Variant.Text">Files</MudButton>
         <MudButton Href="/provider-settings" Color="Color.Inherit" Variant="Variant.Text">Providers</MudButton>
+        <MudButton Href="/help" Color="Color.Inherit" Variant="Variant.Text">Help</MudButton>
     </MudAppBar>
 
     <MudMainContent Class="nugs-main">

@@ -120,6 +120,40 @@ public class ComponentTests : BunitContext
     }
 
     [Fact]
+    public void HelpPage_DocumentsLanOnlyDownloadWorkflow()
+    {
+        var cut = Render<Help>();
+
+        Assert.Contains("How to use NugsDownloader", cut.Markup);
+        Assert.Contains("LAN-only", cut.Markup);
+        Assert.Contains("Save credentials", cut.Markup);
+        Assert.Contains("Queue a release", cut.Markup);
+        Assert.Contains("Resume or retry", cut.Markup);
+        Assert.Contains("/downloads", cut.Markup);
+    }
+
+    [Fact]
+    public void QueuePage_RendersGuidedPasteCardAndLanOnlyHint()
+    {
+        var provider = new FakeProvider(capabilities: new ProviderCapabilities(true, true, true, true, true, true, new[] { "flac" }, new[] { "1080p" }));
+        Services.AddSingleton<IDownloadWorkflow>(new RecordingWorkflow());
+        Services.AddSingleton<IProviderCatalog>(new InMemoryProviderCatalog(new[] { provider }));
+        Services.AddSingleton<IJobRepository>(new MemoryJobRepository(Array.Empty<DownloadJob>()));
+        Services.AddSingleton<IFileStateRepository>(new MemoryFileStateRepository(Array.Empty<FileState>()));
+        Services.AddSingleton<ICredentialStore>(new MemoryCredentialStore(Array.Empty<ProviderAccount>()));
+        Services.AddSingleton<ISecretVault>(new MemorySecretVault());
+        Services.Configure<NugsDownloaderStorageOptions>(options => options.DownloadDirectory = "/downloads");
+
+        var cut = Render<Queue>();
+
+        Assert.Contains("Paste a Nugs or LivePhish release URL", cut.Markup);
+        Assert.Contains("LAN-only", cut.Markup);
+        Assert.Contains("Use saved credentials", cut.Markup);
+        Assert.Contains("Manual credentials", cut.Markup);
+        Assert.Contains("assets/nugs-empty-queue.png", cut.Markup);
+    }
+
+    [Fact]
     public void ProviderSettingsPage_RendersCapabilityMatrix()
     {
         var providers = new[]

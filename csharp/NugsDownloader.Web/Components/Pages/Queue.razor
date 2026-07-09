@@ -17,10 +17,19 @@
 <h1>Queue</h1>
 <p>Create a download job from a Nugs URL and a stored or manual account.</p>
 
-<div>
-    <a href="/">Dashboard</a> |
-    <a href="/login">Login</a> |
-    <a href="/file-state">File State</a> |
+<section class="nugs-queue-guide">
+    <div>
+        <p class="nugs-eyebrow">LAN-only downloader</p>
+        <h2>Paste a Nugs or LivePhish release URL</h2>
+        <p>Use saved credentials when possible, pick a format, and let the worker write into the internal <code>/downloads</code> archive volume.</p>
+    </div>
+    <a class="nugs-secondary-link" href="/help">Read the workflow</a>
+</section>
+
+<div class="nugs-link-row">
+    <a href="/">Dashboard</a>
+    <a href="/login">Login</a>
+    <a href="/file-state">File State</a>
     <a href="/provider-settings">Provider Settings</a>
 </div>
 
@@ -47,7 +56,8 @@
 
 @if (GetAccounts(_model.ProviderId).Count > 0)
 {
-    <div>
+    <div class="nugs-credential-card">
+        <h2>Use saved credentials</h2>
         <label>Stored Account</label>
         <select @bind="_model.StoredAccountId">
             <option value="">Manual credentials</option>
@@ -66,6 +76,8 @@ else
 <EditForm Model="_model" OnValidSubmit="StartDownloadAsync">
     <DataAnnotationsValidator />
     <ValidationSummary />
+
+    <h2>Manual credentials and download options</h2>
 
     <div>
         <label>Source URL</label>
@@ -138,7 +150,13 @@ else
 <h2>Recent Jobs</h2>
 @if (_jobs.Count == 0)
 {
-    <p>No jobs have been queued yet.</p>
+    <div class="nugs-empty-state">
+        <img src="assets/nugs-empty-queue.png" alt="" />
+        <div>
+            <strong>No jobs have been queued yet.</strong>
+            <p>Paste a Nugs release URL above to start building your concert archive.</p>
+        </div>
+    </div>
 }
 else
 {
