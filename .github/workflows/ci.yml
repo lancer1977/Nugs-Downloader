@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -29,5 +33,34 @@ jobs:
     - name: Test
       run: dotnet test csharp/NugsDownloader.sln --no-restore -m:1 -p:UseSharedCompilation=false --logger 'console;verbosity=minimal'
 
+    - name: Vulnerability check
+      run: dotnet list csharp/NugsDownloader.sln package --vulnerable --include-transitive
+
     - name: Build
       run: dotnet build csharp/NugsDownloader.sln --no-restore -m:1
+
+  container:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build container image
+      run: docker build -f deploy/portainer/r620/Dockerfile -t ghcr.io/lancer1977/nugs-downloader-web:${{ github.sha }} .
+
+    - name: Log in to GHCR
+      if: github.event_name == 'push'
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Push immutable image tag
+      if: github.event_name == 'push'
+      run: docker push ghcr.io/lancer1977/nugs-downloader-web:${{ github.sha }}
+
+    - name: Print image digest
+      if: github.event_name == 'push'
+      run: docker buildx imagetools inspect ghcr.io/lancer1977/nugs-downloader-web:${{ github.sha }}

@@ -13,6 +13,7 @@ using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<NugsDownloaderStorageOptions>(builder.Configuration.GetSection("NugsDownloader"));
+builder.Services.Configure<BackgroundDownloadQueueOptions>(builder.Configuration.GetSection("NugsDownloader:BackgroundQueue"));
 var storageOptions = new NugsDownloaderStorageOptions();
 builder.Configuration.GetSection("NugsDownloader").Bind(storageOptions);
 var dataProtectionKeysDirectory = Path.Combine(storageOptions.GetStateDirectory(), "data-protection-keys");

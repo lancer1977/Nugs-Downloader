@@ -152,7 +152,7 @@ public class ComponentTests : BunitContext
         Assert.Contains("Use saved credentials", cut.Markup);
         Assert.Contains("Manual credentials", cut.Markup);
         Assert.Contains("Production support", cut.Markup);
-        Assert.Contains("Video/HLS and LivePhish byte downloads are not production-ready", cut.Markup);
+        Assert.Contains("Nugs and LivePhish audio write media bytes", cut.Markup);
         Assert.Contains("assets/nugs-empty-queue.png", cut.Markup);
     }
 
@@ -226,6 +226,7 @@ public class ComponentTests : BunitContext
             new FileState(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), jobId, "Downloads/Demo/file.flac", FileKind.Audio, FileStatus.Complete, 0, 0, null, DateTimeOffset.UtcNow)
         }));
         Services.AddSingleton<IDownloadWorkflow>(new RecordingWorkflow());
+        Services.AddSingleton<IBackgroundDownloadQueue>(new RecordingQueue());
 
         var cut = Render<JobDetails>(parameters => parameters.Add(p => p.JobId, jobId));
 
@@ -250,6 +251,7 @@ public class ComponentTests : BunitContext
             new FileState(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), jobId, "Downloads/Demo/file.flac", FileKind.Audio, FileStatus.Partial, 0, 0, null, DateTimeOffset.UtcNow)
         }));
         Services.AddSingleton<IDownloadWorkflow>(workflow);
+        Services.AddSingleton<IBackgroundDownloadQueue>(new RecordingQueue());
 
         var cut = Render<JobDetails>(parameters => parameters.Add(p => p.JobId, jobId));
 
@@ -305,6 +307,9 @@ public class ComponentTests : BunitContext
             Request = request;
             return Task.FromResult(new StartDownloadResult(Guid.NewGuid(), request.ProviderId ?? "nugs", "Queued", "queued"));
         }
+
+        public Task<StartDownloadResult> CancelAsync(Guid jobId, CancellationToken ct) =>
+            Task.FromResult(new StartDownloadResult(jobId, "nugs", "Cancelled", "cancelled"));
     }
 
     private sealed class RecordingWorkflow : IDownloadWorkflow

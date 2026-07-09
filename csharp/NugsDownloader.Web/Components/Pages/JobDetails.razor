@@ -2,7 +2,9 @@
 @using NugsDownloader.App.Abstractions
 @using NugsDownloader.App.UseCases
 @using NugsDownloader.Domain.Entities
+@using NugsDownloader.Web.Services
 @inject IDownloadWorkflow DownloadWorkflow
+@inject IBackgroundDownloadQueue DownloadQueue
 @inject IJobRepository JobRepository
 @inject IFileStateRepository FileStateRepository
 
@@ -30,6 +32,7 @@ else
     <div>
         <button type="button" @onclick="ResumeAsync">Resume</button>
         <button type="button" @onclick="RetryAsync">Retry</button>
+        <button type="button" @onclick="CancelAsync">Cancel</button>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_message))
@@ -72,6 +75,13 @@ else
     private async Task RetryAsync()
     {
         var result = await DownloadWorkflow.RetryAsync(JobId, CancellationToken.None);
+        _message = $"{result.Status}: {result.Message}";
+        await OnParametersSetAsync();
+    }
+
+    private async Task CancelAsync()
+    {
+        var result = await DownloadQueue.CancelAsync(JobId, CancellationToken.None);
         _message = $"{result.Status}: {result.Message}";
         await OnParametersSetAsync();
     }

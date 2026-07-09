@@ -76,8 +76,8 @@ public class LivePhishMediaProviderTests
                     "ContainerInfo": "Madison Square Garden 2024-11-02",
                     "ContainerTypeStr": "album",
                     "Tracks": [
-                      { "TrackID": 2001, "SongTitle": "Sand" },
-                      { "TrackID": 2002, "SongTitle": "Ghost" }
+                      { "TrackID": 2001, "SongTitle": "Sand", "ClipURL": "https://media.livephish.test/sand.flac" },
+                      { "TrackID": 2002, "SongTitle": "Ghost", "ClipURL": "https://media.livephish.test/ghost.flac" }
                     ]
                   }
                 }
@@ -99,6 +99,7 @@ public class LivePhishMediaProviderTests
         Assert.Equal("12345", discovery.Metadata["recordingId"]);
         Assert.Equal(2, discovery.Items.Count);
         Assert.All(discovery.Items, item => Assert.Equal("audio", item.Kind));
+        Assert.Equal("https://media.livephish.test/sand.flac", discovery.Items[0].Metadata["clipUrl"]);
 
         var plan = await provider.BuildDownloadPlanAsync(
             discovery,
@@ -150,8 +151,9 @@ public class LivePhishMediaProviderTests
     }
 
     [Fact]
-    public async Task ExecuteDownloadAsync_ReportsProgressForTheExpectedFiles()
+    public async Task ExecuteDownloadAsync_WritesMediaBytesAtomicallyAndReportsProgress()
     {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "nugs-livephish-test-" + Guid.NewGuid().ToString("N"));
         var provider = CreateProvider(request =>
         {
             if (request.RequestUri?.AbsoluteUri.Contains("method=catalog.container", StringComparison.OrdinalIgnoreCase) == true)
@@ -163,32 +165,111 @@ public class LivePhishMediaProviderTests
                     "ContainerInfo": "Madison Square Garden 2024-11-02",
                     "ContainerTypeStr": "album",
                     "Tracks": [
-                      { "TrackID": 2001, "SongTitle": "Sand" },
-                      { "TrackID": 2002, "SongTitle": "Ghost" }
+                      { "TrackID": 2001, "SongTitle": "Sand", "ClipURL": "https://media.livephish.test/sand.flac" },
+                      { "TrackID": 2002, "SongTitle": "Ghost", "ClipURL": "https://media.livephish.test/ghost.flac" }
                     ]
                   }
                 }
                 """);
             }
 
+            if (request.RequestUri?.Host == "media.livephish.test")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(Encoding.UTF8.GetBytes("livephish-bytes"))
+                };
+            }
+
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var discovery = await provider.DiscoverAsync(
-            new Uri("https://plus.livephish.com/index.html#/catalog/recording/12345"),
-            CancellationToken.None);
+        try
+        {
+            var discovery = await provider.DiscoverAsync(
+                new Uri("https://plus.livephish.com/index.html#/catalog/recording/12345"),
+                CancellationToken.None);
 
-        var plan = await provider.BuildDownloadPlanAsync(
-            discovery,
-            new DownloadPreferences("flac", null, false, false, false, "Downloads", true, true),
-            CancellationToken.None);
+            var plan = await provider.BuildDownloadPlanAsync(
+                discovery,
+                new DownloadPreferences("flac", null, false, false, false, tempRoot, true, true),
+                CancellationToken.None);
 
-        var progress = new CapturingProgress();
-        await provider.ExecuteDownloadAsync(plan, progress, CancellationToken.None);
+            var progress = new CapturingProgress();
+            await provider.ExecuteDownloadAsync(plan, progress, CancellationToken.None);
 
-        Assert.Equal(plan.ExpectedFiles.Count, progress.Reports.Count);
-        Assert.Equal(100, progress.Reports.Last().PercentComplete);
-        Assert.Contains("Prepared", progress.Reports.Last().Message ?? string.Empty);
+            Assert.Equal(plan.ExpectedFiles.Count, progress.Reports.Count);
+            Assert.Equal(100, progress.Reports.Last().PercentComplete);
+            Assert.Contains("Downloaded", progress.Reports.Last().Message ?? string.Empty);
+            Assert.All(plan.ExpectedFiles, file => Assert.True(File.Exists(file.FilePath), file.FilePath));
+            Assert.DoesNotContain(Directory.EnumerateFiles(tempRoot, "*.partial", SearchOption.AllDirectories), file => true);
+            Assert.Contains(plan.ExpectedFiles, file => file.Kind == Domain.Entities.FileKind.Audio && new FileInfo(file.FilePath).Length > 0);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteDownloadAsync_FailsAndCleansPartialWhenMediaIsEmpty()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "nugs-livephish-empty-test-" + Guid.NewGuid().ToString("N"));
+        var provider = CreateProvider(request =>
+        {
+            if (request.RequestUri?.AbsoluteUri.Contains("method=catalog.container", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return JsonResponse("""
+                {
+                  "Response": {
+                    "ArtistName": "Phish",
+                    "ContainerInfo": "Madison Square Garden 2024-11-02",
+                    "ContainerTypeStr": "album",
+                    "Tracks": [
+                      { "TrackID": 2001, "SongTitle": "Sand", "ClipURL": "https://media.livephish.test/empty.flac" }
+                    ]
+                  }
+                }
+                """);
+            }
+
+            if (request.RequestUri?.Host == "media.livephish.test")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(Array.Empty<byte>())
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        try
+        {
+            var discovery = await provider.DiscoverAsync(
+                new Uri("https://plus.livephish.com/index.html#/catalog/recording/12345"),
+                CancellationToken.None);
+            var plan = await provider.BuildDownloadPlanAsync(
+                discovery,
+                new DownloadPreferences("flac", null, false, false, false, tempRoot, false, false),
+                CancellationToken.None);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                provider.ExecuteDownloadAsync(plan, new CapturingProgress(), CancellationToken.None));
+
+            Assert.Contains("empty", ex.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(Directory.EnumerateFiles(tempRoot, "*.partial", SearchOption.AllDirectories), file => true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
     }
 
     private static LivePhishMediaProvider CreateProvider(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) =>

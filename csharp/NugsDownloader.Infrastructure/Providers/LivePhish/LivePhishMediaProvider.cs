@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using NugsDownloader.Domain.Entities;
 using NugsDownloader.Domain.Providers;
@@ -100,11 +101,7 @@ public sealed class LivePhishMediaProvider : ILivePhishProvider
                     DisplayName: track.SongTitle,
                     Kind: "audio",
                     Index: index,
-                    Metadata: new Dictionary<string, string>
-                    {
-                        ["trackId"] = track.TrackID.ToString(),
-                        ["title"] = track.SongTitle
-                    })).ToArray();
+                    Metadata: BuildTrackMetadata(track, index))).ToArray();
             }
         }
 
@@ -185,7 +182,7 @@ public sealed class LivePhishMediaProvider : ILivePhishProvider
             ResumeState: discovery.Metadata));
     }
 
-    public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct)
+    public async Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -193,12 +190,17 @@ public sealed class LivePhishMediaProvider : ILivePhishProvider
         if (totalItems == 0)
         {
             progress.Report(new DownloadProgress(plan.JobId, plan.ProviderId, 0, 0, 100, 0, 0, $"No items to download for {plan.ProviderId}."));
-            return Task.CompletedTask;
+            return;
         }
 
         for (var index = 0; index < totalItems; index++)
         {
             ct.ThrowIfCancellationRequested();
+
+            if (index < plan.ExpectedFiles.Count)
+            {
+                await WriteExpectedFileAsync(plan, index, ct);
+            }
 
             var currentItem = index + 1;
             var percent = (int)Math.Round((double)currentItem / totalItems * 100, MidpointRounding.AwayFromZero);
@@ -210,10 +212,119 @@ public sealed class LivePhishMediaProvider : ILivePhishProvider
                 percent,
                 currentItem,
                 plan.Items.Count,
-                $"Prepared {currentItem}/{totalItems} item(s) for {plan.ProviderId}."));
+                $"Downloaded {currentItem}/{totalItems} file(s) for {plan.ProviderId}."));
+        }
+    }
+
+    private async Task WriteExpectedFileAsync(DownloadPlan plan, int index, CancellationToken ct)
+    {
+        var expectedFile = plan.ExpectedFiles[index];
+        var item = index < plan.Items.Count ? plan.Items[index] : null;
+        var targetPath = Path.GetFullPath(expectedFile.FilePath);
+        var directory = Path.GetDirectoryName(targetPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
         }
 
-        return Task.CompletedTask;
+        switch (expectedFile.Kind)
+        {
+            case FileKind.Audio:
+                var mediaUri = ResolveMediaUri(item);
+                if (mediaUri is null)
+                {
+                    throw new InvalidOperationException($"No media URL is available for LivePhish audio item {item?.Id ?? index.ToString()}.");
+                }
+
+                await DownloadMediaFileAtomicallyAsync(mediaUri, targetPath, ct);
+                break;
+            case FileKind.Metadata:
+                await WriteTextFileAtomicallyAsync(targetPath, BuildMetadataFile(plan), ct);
+                break;
+            case FileKind.Artwork:
+                await WriteTextFileAtomicallyAsync(targetPath, "Artwork unavailable for this LivePhish item.", ct);
+                break;
+        }
+    }
+
+    private async Task DownloadMediaFileAtomicallyAsync(Uri mediaUri, string targetPath, CancellationToken ct)
+    {
+        var partialPath = targetPath + ".partial";
+        try
+        {
+            await using (var destination = File.Create(partialPath))
+            {
+                await _apiClient.DownloadFileAsync(mediaUri, destination, ct);
+            }
+
+            var downloaded = new FileInfo(partialPath);
+            if (!downloaded.Exists || downloaded.Length <= 0)
+            {
+                throw new InvalidOperationException("Downloaded LivePhish media file was empty.");
+            }
+
+            File.Move(partialPath, targetPath, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(partialPath))
+            {
+                File.Delete(partialPath);
+            }
+
+            throw;
+        }
+    }
+
+    private static async Task WriteTextFileAtomicallyAsync(string targetPath, string contents, CancellationToken ct)
+    {
+        var partialPath = targetPath + ".partial";
+        try
+        {
+            await File.WriteAllTextAsync(partialPath, contents, Encoding.UTF8, ct);
+            File.Move(partialPath, targetPath, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(partialPath))
+            {
+                File.Delete(partialPath);
+            }
+
+            throw;
+        }
+    }
+
+    private static Uri? ResolveMediaUri(MediaItem? item)
+    {
+        if (item?.Metadata is not IReadOnlyDictionary<string, string> values)
+        {
+            return null;
+        }
+
+        foreach (var key in new[] { "downloadUrl", "mediaUrl", "streamUrl", "clipUrl", "clipURL", "url" })
+        {
+            if (values.TryGetValue(key, out var value) && Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                return uri;
+            }
+        }
+
+        return null;
+    }
+
+    private static string BuildMetadataFile(DownloadPlan plan)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("LivePhish download metadata");
+        builder.AppendLine($"Provider: {plan.ProviderId}");
+        builder.AppendLine($"Items: {plan.Items.Count}");
+        foreach (var item in plan.Items)
+        {
+            builder.AppendLine($"- {item.Index + 1}. {item.DisplayName} ({item.Kind})");
+        }
+
+        return builder.ToString();
     }
 
     private static string ExtractRecordingId(string value)
@@ -256,6 +367,23 @@ public sealed class LivePhishMediaProvider : ILivePhishProvider
                 : "." + SanitizePathSegment(preferredAudioFormat);
 
         return $"{trackNumber}. {SanitizePathSegment(item.DisplayName)}{extension}";
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildTrackMetadata(LivePhishApiClient.Track track, int index)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["trackId"] = track.TrackID.ToString(),
+            ["title"] = track.SongTitle,
+            ["trackNumber"] = (index + 1).ToString()
+        };
+
+        if (!string.IsNullOrWhiteSpace(track.ClipURL))
+        {
+            metadata["clipUrl"] = track.ClipURL;
+        }
+
+        return metadata;
     }
 
     private static IReadOnlyList<MediaItem> SelectItems(MediaDiscoveryResult discovery, DownloadPreferences preferences)
