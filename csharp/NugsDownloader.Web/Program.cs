@@ -38,6 +38,9 @@ builder.Services.AddSingleton<IFileStateRepository, SqliteFileStateRepository>()
 builder.Services.AddSingleton<ICredentialStore, SqliteCredentialStore>();
 builder.Services.AddSingleton<ISecretVault, SqliteSecretVault>();
 builder.Services.AddScoped<IDownloadWorkflow, DownloadWorkflow>();
+builder.Services.AddSingleton<BackgroundDownloadQueue>();
+builder.Services.AddSingleton<IBackgroundDownloadQueue>(sp => sp.GetRequiredService<BackgroundDownloadQueue>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundDownloadQueue>());
 builder.Services
     .AddHealthChecks()
     .AddCheck<StorageHealthCheck>("storage", tags: new[] { "ready" });

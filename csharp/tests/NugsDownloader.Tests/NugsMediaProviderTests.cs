@@ -406,9 +406,66 @@ public class NugsMediaProviderTests
             await provider.ExecuteDownloadAsync(plan, progress, CancellationToken.None);
 
             Assert.Equal(new byte[] { 1, 2, 3, 4, 5 }, await File.ReadAllBytesAsync(audioPath));
+            Assert.False(File.Exists(audioPath + ".partial"));
             Assert.Contains("Nugs download metadata", await File.ReadAllTextAsync(metadataPath));
+            Assert.False(File.Exists(metadataPath + ".partial"));
             Assert.Equal(2, progress.Reports.Count);
             Assert.Contains("Downloaded", progress.Reports.Last().Message);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteDownloadAsync_ThrowsWhenMediaDownloadIsEmptyAndRemovesPartialFile()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "nugs-provider-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var provider = new NugsMediaProvider(new NugsApiClient(new HttpClient(new FakeHttpHandler(request =>
+            {
+                if (request.RequestUri?.AbsoluteUri == "https://assets.example.test/empty.flac")
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new ByteArrayContent(Array.Empty<byte>())
+                    });
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            }))));
+
+            var audioPath = Path.Combine(tempRoot, "empty.flac");
+            var plan = new NugsDownloader.Domain.ValueObjects.DownloadPlan(
+                "nugs",
+                Guid.NewGuid(),
+                new[]
+                {
+                    new NugsDownloader.Domain.ValueObjects.MediaItem(
+                        "1",
+                        "Empty",
+                        "audio",
+                        0,
+                        new Dictionary<string, string> { ["clipUrl"] = "https://assets.example.test/empty.flac" })
+                },
+                tempRoot,
+                new NugsDownloader.Domain.ValueObjects.DownloadPreferences("flac", "1080p", false, false, false, tempRoot, false, false),
+                new[]
+                {
+                    new NugsDownloader.Domain.Entities.FileState(Guid.NewGuid(), Guid.Empty, audioPath, NugsDownloader.Domain.Entities.FileKind.Audio, NugsDownloader.Domain.Entities.FileStatus.Partial, 0, 0, null, null)
+                },
+                null);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                provider.ExecuteDownloadAsync(plan, new Progress<NugsDownloader.Domain.ValueObjects.DownloadProgress>(), CancellationToken.None));
+
+            Assert.False(File.Exists(audioPath));
+            Assert.False(File.Exists(audioPath + ".partial"));
         }
         finally
         {

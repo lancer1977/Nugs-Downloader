@@ -76,5 +76,6 @@ make lint
 
 - The legacy Go backend and embedded React/Vite UI have been removed.
 - The Portainer deployment targets the C# web app.
-- Audio jobs now write provider media bytes, metadata sidecars, and byte counts into file state; video/HLS expansion still requires the provider-specific stream URL plus FFmpeg processing.
+- Nugs audio jobs now write provider media bytes with `.partial` + atomic rename semantics, metadata sidecars, and byte counts into file state. The current live smoke proves a representative Nugs audio path; full-quality subscription URL expansion and LivePhish byte parity still need provider-specific hardening.
+- Video/HLS controls are intentionally disabled/labelled until stream URL resolution and FFmpeg processing are production-ready.
 - FFmpeg is required for video workflows and HLS-to-MP4 conversion.

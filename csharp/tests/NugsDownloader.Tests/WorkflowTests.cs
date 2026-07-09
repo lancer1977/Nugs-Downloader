@@ -302,6 +302,69 @@ public class WorkflowTests
     }
 
     [Fact]
+    public async Task DownloadWorkflow_RedactsSecretsFromFailureMessages()
+    {
+        var jobs = new MemoryJobRepository();
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { new SecretThrowingProvider() }),
+            jobs,
+            new MemoryFileStateRepository(),
+            new MemoryCredentialStore(),
+            new MemorySecretVault());
+        var credentials = new Credentials("user", "pass-123", "token-abc", "label");
+
+        var result = await workflow.StartAsync(
+            new StartDownloadRequest(
+                null,
+                "secret-throwing",
+                new Uri("https://example.com/album/123"),
+                credentials,
+                new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true)),
+            new Progress<DownloadProgress>(),
+            CancellationToken.None);
+
+        var job = (await jobs.ListAsync(CancellationToken.None)).Single();
+
+        Assert.Equal("Failed", result.Status);
+        Assert.DoesNotContain("pass-123", result.Message);
+        Assert.DoesNotContain("token-abc", result.Message);
+        Assert.DoesNotContain("token=token-abc", job.ErrorMessage);
+        Assert.Contains("[REDACTED]", result.Message);
+        Assert.Equal(result.Message, job.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task DownloadWorkflow_RedactsSecretsFromAuthFailureMessages()
+    {
+        var jobs = new MemoryJobRepository();
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { new SecretRejectingProvider() }),
+            jobs,
+            new MemoryFileStateRepository(),
+            new MemoryCredentialStore(),
+            new MemorySecretVault());
+        var credentials = new Credentials("user", "pass-123", "token-abc", "label");
+
+        var result = await workflow.StartAsync(
+            new StartDownloadRequest(
+                null,
+                "secret-rejecting",
+                new Uri("https://example.com/album/123"),
+                credentials,
+                new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true)),
+            new Progress<DownloadProgress>(),
+            CancellationToken.None);
+
+        var job = (await jobs.ListAsync(CancellationToken.None)).Single();
+
+        Assert.Equal("AuthFailed", result.Status);
+        Assert.DoesNotContain("pass-123", result.Message);
+        Assert.DoesNotContain("token-abc", result.Message);
+        Assert.Contains("[REDACTED]", result.Message);
+        Assert.Equal(result.Message, job.ErrorMessage);
+    }
+
+    [Fact]
     public async Task DownloadWorkflow_MarksJobCancelledWhenExecutionTokenIsCancelled()
     {
         var jobs = new MemoryJobRepository();
@@ -390,6 +453,30 @@ public class WorkflowTests
             ct.ThrowIfCancellationRequested();
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class SecretThrowingProvider : IMediaProvider
+    {
+        public string Id => "secret-throwing";
+        public string DisplayName => "Secret Throwing";
+        public ProviderCapabilities Capabilities { get; } = new(true, false, false, false, false, false, Array.Empty<string>(), Array.Empty<string>());
+        public bool CanHandle(Uri uri) => true;
+        public Task<AuthResult> AuthenticateAsync(Credentials credentials, CancellationToken ct) => Task.FromResult(new AuthResult(true, Id, "secret-ref", DisplayName, null, null));
+        public Task<MediaDiscoveryResult> DiscoverAsync(Uri uri, CancellationToken ct) => Task.FromResult(new MediaDiscoveryResult(Id, uri, uri, "Title", null, new[] { new MediaItem("1", "Item", "audio", 0, new Dictionary<string, string>()) }, false, true, new Dictionary<string, string>()));
+        public Task<DownloadPlan> BuildDownloadPlanAsync(MediaDiscoveryResult discovery, DownloadPreferences preferences, CancellationToken ct) => Task.FromResult(new DownloadPlan(Id, Guid.NewGuid(), discovery.Items, preferences.OutputRoot, preferences, Array.Empty<FileState>(), null));
+        public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct) => throw new InvalidOperationException("failed with pass-123 at https://media.example.test/file.flac?token=token-abc&x=1");
+    }
+
+    private sealed class SecretRejectingProvider : IMediaProvider
+    {
+        public string Id => "secret-rejecting";
+        public string DisplayName => "Secret Rejecting";
+        public ProviderCapabilities Capabilities { get; } = new(true, false, false, false, false, false, Array.Empty<string>(), Array.Empty<string>());
+        public bool CanHandle(Uri uri) => true;
+        public Task<AuthResult> AuthenticateAsync(Credentials credentials, CancellationToken ct) => Task.FromResult(new AuthResult(false, Id, null, DisplayName, null, "bad password pass-123 token token-abc"));
+        public Task<MediaDiscoveryResult> DiscoverAsync(Uri uri, CancellationToken ct) => Task.FromResult(new MediaDiscoveryResult(Id, uri, uri, "Title", null, Array.Empty<MediaItem>(), false, true, new Dictionary<string, string>()));
+        public Task<DownloadPlan> BuildDownloadPlanAsync(MediaDiscoveryResult discovery, DownloadPreferences preferences, CancellationToken ct) => Task.FromResult(new DownloadPlan(Id, Guid.NewGuid(), discovery.Items, preferences.OutputRoot, preferences, Array.Empty<FileState>(), null));
+        public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct) => Task.CompletedTask;
     }
 
     private sealed class ReplayProvider : IMediaProvider

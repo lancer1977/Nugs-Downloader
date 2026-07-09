@@ -37,13 +37,13 @@ public sealed class NugsMediaProvider : INugsProvider
 
     public ProviderCapabilities Capabilities { get; } = new(
         SupportsAudio: true,
-        SupportsVideo: true,
-        SupportsChapters: true,
+        SupportsVideo: false,
+        SupportsChapters: false,
         SupportsResume: true,
         SupportsTokens: true,
         SupportsPasswordLogin: true,
         SupportedFormats: new[] { "alac", "flac", "mqa", "aac" },
-        SupportedResolutions: new[] { "480p", "720p", "1080p", "1440p", "4k" });
+        SupportedResolutions: Array.Empty<string>());
 
     public bool CanHandle(Uri uri) =>
         uri.Host.Contains("nugs.net", StringComparison.OrdinalIgnoreCase)
@@ -331,26 +331,70 @@ public sealed class NugsMediaProvider : INugsProvider
                     throw new InvalidOperationException($"No media URL is available for {expectedFile.Kind.ToString().ToLowerInvariant()} item {item?.Id ?? index.ToString()}.");
                 }
 
-                await using (var destination = File.Create(targetPath))
-                {
-                    await _apiClient.DownloadFileAsync(mediaUri, destination, ct);
-                }
+                await DownloadMediaFileAtomicallyAsync(mediaUri, targetPath, ct);
                 break;
             case FileKind.Metadata:
-                await File.WriteAllTextAsync(targetPath, BuildMetadataFile(plan), Encoding.UTF8, ct);
+                await WriteTextFileAtomicallyAsync(targetPath, BuildMetadataFile(plan), ct);
                 break;
             case FileKind.Artwork:
                 var artworkUri = ResolveMetadataUri(plan.ResumeState, "artworkUrl", "coverUrl", "imageUrl");
                 if (artworkUri is not null)
                 {
-                    await using var destination = File.Create(targetPath);
-                    await _apiClient.DownloadFileAsync(artworkUri, destination, ct);
+                    await DownloadMediaFileAtomicallyAsync(artworkUri, targetPath, ct);
                 }
                 else
                 {
-                    await File.WriteAllTextAsync(targetPath, "Artwork unavailable for this Nugs item.", Encoding.UTF8, ct);
+                    await WriteTextFileAtomicallyAsync(targetPath, "Artwork unavailable for this Nugs item.", ct);
                 }
                 break;
+        }
+    }
+
+    private async Task DownloadMediaFileAtomicallyAsync(Uri mediaUri, string targetPath, CancellationToken ct)
+    {
+        var partialPath = targetPath + ".partial";
+        try
+        {
+            await using (var destination = File.Create(partialPath))
+            {
+                await _apiClient.DownloadFileAsync(mediaUri, destination, ct);
+            }
+
+            var downloaded = new FileInfo(partialPath);
+            if (!downloaded.Exists || downloaded.Length <= 0)
+            {
+                throw new InvalidOperationException("Downloaded media file was empty.");
+            }
+
+            File.Move(partialPath, targetPath, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(partialPath))
+            {
+                File.Delete(partialPath);
+            }
+
+            throw;
+        }
+    }
+
+    private static async Task WriteTextFileAtomicallyAsync(string targetPath, string contents, CancellationToken ct)
+    {
+        var partialPath = targetPath + ".partial";
+        try
+        {
+            await File.WriteAllTextAsync(partialPath, contents, Encoding.UTF8, ct);
+            File.Move(partialPath, targetPath, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(partialPath))
+            {
+                File.Delete(partialPath);
+            }
+
+            throw;
         }
     }
 

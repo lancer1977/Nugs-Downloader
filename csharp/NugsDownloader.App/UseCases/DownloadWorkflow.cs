@@ -66,7 +66,7 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             var auth = await provider.AuthenticateAsync(request.Credentials, ct);
             if (!auth.Success)
             {
-                var message = auth.Message ?? "Authentication failed.";
+                var message = DownloadMessageRedactor.Redact(auth.Message ?? "Authentication failed.", request.Credentials);
                 await _jobRepository.SaveAsync(currentJob with
                 {
                     Status = DownloadJobStatus.Failed,
@@ -164,14 +164,15 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
         }
         catch (Exception ex)
         {
+            var message = DownloadMessageRedactor.Redact(ex.Message, request.Credentials);
             await _jobRepository.SaveAsync(currentJob with
             {
                 Status = DownloadJobStatus.Failed,
                 CompletedAt = DateTimeOffset.UtcNow,
-                ErrorMessage = ex.Message
+                ErrorMessage = message
             }, CancellationToken.None);
 
-            return new StartDownloadResult(jobId, provider.Id, "Failed", ex.Message);
+            return new StartDownloadResult(jobId, provider.Id, "Failed", message);
         }
     }
 

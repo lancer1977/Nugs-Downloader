@@ -6,7 +6,8 @@
 @using NugsDownloader.Domain.ValueObjects
 @using Microsoft.Extensions.Options
 @using NugsDownloader.Web.Options
-@inject IDownloadWorkflow DownloadWorkflow
+@using NugsDownloader.Web.Services
+@inject IBackgroundDownloadQueue DownloadQueue
 @inject ICredentialStore CredentialStore
 @inject IProviderCatalog ProviderCatalog
 @inject IJobRepository JobRepository
@@ -21,7 +22,8 @@
     <div>
         <p class="nugs-eyebrow">LAN-only downloader</p>
         <h2>Paste a Nugs or LivePhish release URL</h2>
-        <p>Use saved credentials when possible, pick a format, and let the worker write into the internal <code>/downloads</code> archive volume.</p>
+        <p>Use saved credentials when possible, pick a supported audio format, and let the worker write into the internal <code>/downloads</code> archive volume.</p>
+        <p><strong>Production support:</strong> Nugs audio has a live byte-download smoke. Video/HLS and LivePhish byte downloads are not production-ready yet and are hidden or labelled until implemented.</p>
     </div>
     <a class="nugs-secondary-link" href="/help">Read the workflow</a>
 </section>
@@ -122,7 +124,7 @@ else
 
     <div>
         <label>Video Resolution</label>
-        <InputSelect @bind-Value="_model.VideoResolution">
+        <InputSelect @bind-Value="_model.VideoResolution" disabled="@(!SupportsVideoDownloads)">
             <option value="">Auto</option>
             <option value="480p">480p</option>
             <option value="720p">720p</option>
@@ -134,9 +136,13 @@ else
 
     <div>
         <label>
-            <InputCheckbox @bind-Value="_model.ForceVideo" />
+            <InputCheckbox @bind-Value="_model.ForceVideo" disabled="@(!SupportsVideoDownloads)" />
             Force video
         </label>
+        @if (!SupportsVideoDownloads)
+        {
+            <p>Video/HLS downloads are not production-ready for the selected provider yet.</p>
+        }
     </div>
 
     <button type="submit">Start Download</button>
@@ -200,7 +206,7 @@ else
             PreferredVideoResolution: _model.VideoResolution,
             SkipVideos: false,
             SkipChapters: false,
-            ForceVideo: _model.ForceVideo,
+            ForceVideo: SupportsVideoDownloads && _model.ForceVideo,
             OutputRoot: _model.OutputRoot,
             WriteMetadata: true,
             WriteArtwork: true);
@@ -212,7 +218,7 @@ else
         }
 
         var request = new StartDownloadRequest(null, _model.ProviderId, sourceUrl, credentials, prefs);
-        var result = await DownloadWorkflow.StartAsync(request, new Progress<DownloadProgress>(), CancellationToken.None);
+        var result = await DownloadQueue.EnqueueAsync(request, CancellationToken.None);
         _message = $"{result.Status}: {result.Message}";
         await ReloadAsync();
     }
@@ -257,6 +263,8 @@ else
     }
 
     private static string GetCapabilityHint(bool supported, string yes, string no) => supported ? yes : no;
+
+    private bool SupportsVideoDownloads => _selectedProvider?.Capabilities.SupportsVideo == true;
 
     private IReadOnlyList<ProviderAccount> GetAccounts(string providerId) =>
         _accounts.Where(account => account.ProviderId == providerId).ToArray();

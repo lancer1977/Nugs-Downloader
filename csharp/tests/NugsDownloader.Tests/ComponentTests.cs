@@ -7,6 +7,7 @@ using NugsDownloader.Domain.Providers;
 using NugsDownloader.Domain.ValueObjects;
 using NugsDownloader.Web.Components.Pages;
 using NugsDownloader.Web.Options;
+using NugsDownloader.Web.Services;
 using Xunit;
 
 namespace NugsDownloader.Tests;
@@ -48,13 +49,13 @@ public class ComponentTests : BunitContext
     public async Task QueuePage_SubmitFlow_CallsWorkflowAndShowsResult()
     {
         var provider = new FakeProvider(capabilities: new ProviderCapabilities(true, false, false, true, false, true, new[] { "flac" }, Array.Empty<string>()));
-        var workflow = new RecordingWorkflow();
+        var queue = new RecordingQueue();
         var downloadDirectory = Path.Combine(Path.GetTempPath(), $"nugs-component-{Guid.NewGuid():N}", "downloads");
         var vault = new MemorySecretVault();
         var secretRef = await vault.StoreAsync(provider.Id, "Main", "stored-password", CancellationToken.None);
         var account = new ProviderAccount(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), provider.Id, "Main", "alice", secretRef, AuthenticationState.Valid, DateTimeOffset.UtcNow);
 
-        Services.AddSingleton<IDownloadWorkflow>(workflow);
+        Services.AddSingleton<IBackgroundDownloadQueue>(queue);
         Services.AddSingleton<IProviderCatalog>(new InMemoryProviderCatalog(new[] { provider }));
         Services.AddSingleton<IJobRepository>(new MemoryJobRepository(Array.Empty<DownloadJob>()));
         Services.AddSingleton<IFileStateRepository>(new MemoryFileStateRepository(Array.Empty<FileState>()));
@@ -68,14 +69,14 @@ public class ComponentTests : BunitContext
 
         await cut.InvokeAsync(() => cut.Find("button[type=submit]").Click());
 
-        Assert.NotNull(workflow.Request);
-        Assert.Equal(provider.Id, workflow.Request!.ProviderId);
-        Assert.Equal("https://example.com/release/1", workflow.Request.SourceUrl.ToString());
-        Assert.Equal("alice", workflow.Request.Credentials.Username);
-        Assert.Equal("stored-password", workflow.Request.Credentials.Password);
-        Assert.Equal("Main", workflow.Request.Credentials.Label);
-        Assert.Equal(downloadDirectory, workflow.Request.Preferences.OutputRoot);
-        Assert.Contains("Completed: ok", cut.Markup);
+        Assert.NotNull(queue.Request);
+        Assert.Equal(provider.Id, queue.Request!.ProviderId);
+        Assert.Equal("https://example.com/release/1", queue.Request.SourceUrl.ToString());
+        Assert.Equal("alice", queue.Request.Credentials.Username);
+        Assert.Equal("stored-password", queue.Request.Credentials.Password);
+        Assert.Equal("Main", queue.Request.Credentials.Label);
+        Assert.Equal(downloadDirectory, queue.Request.Preferences.OutputRoot);
+        Assert.Contains("Queued: queued", cut.Markup);
         Assert.Contains("Resume is available.", cut.Markup);
         Assert.Contains("Start Download", cut.Markup);
     }
@@ -136,7 +137,7 @@ public class ComponentTests : BunitContext
     public void QueuePage_RendersGuidedPasteCardAndLanOnlyHint()
     {
         var provider = new FakeProvider(capabilities: new ProviderCapabilities(true, true, true, true, true, true, new[] { "flac" }, new[] { "1080p" }));
-        Services.AddSingleton<IDownloadWorkflow>(new RecordingWorkflow());
+        Services.AddSingleton<IBackgroundDownloadQueue>(new RecordingQueue());
         Services.AddSingleton<IProviderCatalog>(new InMemoryProviderCatalog(new[] { provider }));
         Services.AddSingleton<IJobRepository>(new MemoryJobRepository(Array.Empty<DownloadJob>()));
         Services.AddSingleton<IFileStateRepository>(new MemoryFileStateRepository(Array.Empty<FileState>()));
@@ -150,6 +151,8 @@ public class ComponentTests : BunitContext
         Assert.Contains("LAN-only", cut.Markup);
         Assert.Contains("Use saved credentials", cut.Markup);
         Assert.Contains("Manual credentials", cut.Markup);
+        Assert.Contains("Production support", cut.Markup);
+        Assert.Contains("Video/HLS and LivePhish byte downloads are not production-ready", cut.Markup);
         Assert.Contains("assets/nugs-empty-queue.png", cut.Markup);
     }
 
@@ -291,6 +294,17 @@ public class ComponentTests : BunitContext
             Task.FromResult(new DownloadPlan(Id, Guid.NewGuid(), discovery.Items, preferences.OutputRoot, preferences, Array.Empty<FileState>(), null));
 
         public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingQueue : IBackgroundDownloadQueue
+    {
+        public StartDownloadRequest? Request { get; private set; }
+
+        public Task<StartDownloadResult> EnqueueAsync(StartDownloadRequest request, CancellationToken ct)
+        {
+            Request = request;
+            return Task.FromResult(new StartDownloadResult(Guid.NewGuid(), request.ProviderId ?? "nugs", "Queued", "queued"));
+        }
     }
 
     private sealed class RecordingWorkflow : IDownloadWorkflow
