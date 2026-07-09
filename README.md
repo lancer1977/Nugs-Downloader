@@ -2,6 +2,10 @@
 
 The active Nugs application lives in `csharp/` as a .NET 10 solution with a Blazor web UI.
 
+## Access policy
+
+`nugs.polyhydragames.com` is an internal/LAN-only service. Do not add public DNS records or remove Traefik IP whitelisting for this app unless that policy is explicitly reversed.
+
 ## Tags
 
 - nugs-downloader

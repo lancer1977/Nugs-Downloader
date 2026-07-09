@@ -7,13 +7,39 @@
 @inject IJobRepository JobRepository
 @inject IFileStateRepository FileStateRepository
 
-<h1>NugsDownloader</h1>
-<p>Dashboard for jobs, provider status, and file state.</p>
+<section class="nugs-hero-card">
+    <div class="nugs-hero-copy">
+        <p class="nugs-eyebrow">Concert archive intake</p>
+        <h1>NugsDownloader</h1>
+        <p class="nugs-hero-lede">Queue Nugs releases, reuse saved provider credentials, and track every file from discovery through download. LAN-only by design.</p>
+        <div class="nugs-hero-actions">
+            <a class="nugs-primary-link" href="/queue">Queue a download</a>
+            <a class="nugs-secondary-link" href="/login">Save credentials</a>
+            <a class="nugs-secondary-link" href="/help">How it works</a>
+        </div>
+    </div>
+    <div class="nugs-hero-art" role="img" aria-label="Neon music archive illustration"></div>
+</section>
 
-<div>
-    <a href="/queue">Queue</a> |
-    <a href="/login">Login</a> |
-    <a href="/file-state">File State</a> |
+<section class="nugs-metrics" aria-label="Download summary">
+    <div>
+        <span>@_providers.Count</span>
+        <strong>Providers</strong>
+    </div>
+    <div>
+        <span>@_jobs.Count</span>
+        <strong>Jobs tracked</strong>
+    </div>
+    <div>
+        <span>@_fileStates.Count</span>
+        <strong>Recent files</strong>
+    </div>
+</section>
+
+<div class="nugs-link-row">
+    <a href="/queue">Queue</a>
+    <a href="/login">Login</a>
+    <a href="/file-state">File State</a>
     <a href="/provider-settings">Provider Settings</a>
 </div>
 

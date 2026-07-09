@@ -20,7 +20,9 @@ The UI is a Blazor Server app hosted by `csharp/NugsDownloader.Web`.
 - Components live under `csharp/NugsDownloader.Web/Components`
 - Shared styles and static assets live under `csharp/NugsDownloader.Web/wwwroot`
 - The same host serves the UI, health checks, and runtime APIs
-- Primary pages include login, queue, job details, provider settings, and file state
+- Primary pages include login, queue, help, job details, provider settings, and file state
+- `nugs.polyhydragames.com` is LAN-only/internal-only; keep DNS and Traefik routing scoped to the LAN
+- Static art assets live under `wwwroot/assets` and are used by the dashboard hero, app icon, and empty states
 
 ## Cleanup Checklist
 

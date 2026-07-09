@@ -20,6 +20,7 @@ public class WebIntegrationTests
     [InlineData("/login", "Login")]
     [InlineData("/file-state", "File State")]
     [InlineData("/provider-settings", "Provider Settings")]
+    [InlineData("/help", "How to use NugsDownloader")]
     public async Task WebHost_RendersPrimaryPages(string path, string expectedText)
     {
         await using var factory = new TestWebApplicationFactory();
@@ -30,7 +31,7 @@ public class WebIntegrationTests
 
         Assert.True(response.IsSuccessStatusCode, body);
         Assert.Contains(expectedText, body);
-        if (path != "/file-state")
+        if (path != "/file-state" && path != "/help")
         {
             Assert.Contains("Integration Nugs", body);
         }
@@ -49,6 +50,7 @@ public class WebIntegrationTests
         Assert.Contains("Login", body);
         Assert.Contains("Files", body);
         Assert.Contains("Providers", body);
+        Assert.Contains("Help", body);
     }
 
     [Fact]
@@ -105,6 +107,10 @@ public class WebIntegrationTests
     [Theory]
     [InlineData("/app.css")]
     [InlineData("/_content/MudBlazor/MudBlazor.min.css")]
+    [InlineData("/_framework/blazor.web.js")]
+    [InlineData("/assets/nugs-hero.png")]
+    [InlineData("/assets/nugs-icon.png")]
+    [InlineData("/assets/nugs-empty-queue.png")]
     public async Task WebHost_ServesThemeAssets(string path)
     {
         await using var factory = new TestWebApplicationFactory();

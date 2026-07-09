@@ -7,10 +7,10 @@
 <h1>File State</h1>
 <p>Inspect the current file state recorded for download jobs.</p>
 
-<div>
-    <a href="/">Dashboard</a> |
-    <a href="/queue">Queue</a> |
-    <a href="/login">Login</a> |
+<div class="nugs-link-row">
+    <a href="/">Dashboard</a>
+    <a href="/queue">Queue</a>
+    <a href="/login">Login</a>
     <a href="/provider-settings">Provider Settings</a>
 </div>
 
@@ -22,7 +22,13 @@
 
 @if (_fileStates.Count == 0)
 {
-    <p>No file state has been recorded yet.</p>
+    <div class="nugs-empty-state">
+        <img src="assets/nugs-empty-queue.png" alt="" />
+        <div>
+            <strong>No file state has been recorded yet.</strong>
+            <p>Queued jobs will populate this ledger as tracks, video, artwork, and metadata are discovered.</p>
+        </div>
+    </div>
 }
 else
 {
