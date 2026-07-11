@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using NugsDownloader.Domain.ValueObjects;
 
 namespace NugsDownloader.App.UseCases;
@@ -5,6 +6,9 @@ namespace NugsDownloader.App.UseCases;
 internal static class DownloadMessageRedactor
 {
     private const string Redacted = "[REDACTED]";
+    private static readonly Regex SensitiveUrl = new("https?://[^\\s\\\"']+\\?(?=[^\\s\\\"']*(?:access_token|token|password|secret|sig|signature|x-amz-signature|x-amz-credential)=)[^\\s\\\"']+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex AuthorizationHeader = new(@"\bauthorization\s*:\s*[^\r\n]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex CookieHeader = new(@"\bcookie\s*:\s*[^\r\n]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static string Redact(string? message, Credentials? credentials = null)
     {
@@ -19,10 +23,13 @@ internal static class DownloadMessageRedactor
             redacted = redacted.Replace(secret, Redacted, StringComparison.Ordinal);
         }
 
-        redacted = RedactQueryValue(redacted, "token");
-        redacted = RedactQueryValue(redacted, "access_token");
-        redacted = RedactQueryValue(redacted, "password");
-        redacted = RedactQueryValue(redacted, "secret");
+        redacted = SensitiveUrl.Replace(redacted, Redacted);
+        redacted = AuthorizationHeader.Replace(redacted, "Authorization: " + Redacted);
+        redacted = CookieHeader.Replace(redacted, "Cookie: " + Redacted);
+        foreach (var key in new[] { "token", "access_token", "password", "secret", "sig", "signature", "x-amz-signature", "x-amz-credential", "session" })
+        {
+            redacted = RedactQueryValue(redacted, key);
+        }
         return redacted;
     }
 

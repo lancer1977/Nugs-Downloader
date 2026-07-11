@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -167,11 +168,102 @@ public sealed class NugsApiClient
         request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
 
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException("Nugs media download request failed.");
+        }
 
         await using var source = await response.Content.ReadAsStreamAsync(ct);
         await source.CopyToAsync(destination, ct);
     }
+
+    public async Task<Uri> ResolveFullQualityAudioUrlAsync(
+        string accessToken,
+        string userId,
+        string trackId,
+        string? preferredFormat,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(trackId))
+        {
+            throw new InvalidOperationException("Authenticated Nugs subscription details are required to resolve entitled audio.");
+        }
+
+        try
+        {
+            var subscription = await GetSubInfoAsync(accessToken, ct);
+            if (subscription is null || !subscription.IsContentAccessible)
+            {
+                throw new InvalidOperationException("Nugs subscription does not permit entitled audio streaming.");
+            }
+
+            var planId = FirstNonEmpty(subscription.Plan?.PlanID, subscription.Promo?.Plan?.PlanID);
+            if (string.IsNullOrWhiteSpace(subscription.LegacySubscriptionID) || string.IsNullOrWhiteSpace(planId))
+            {
+                throw new InvalidOperationException("Nugs subscription details are incomplete for entitled audio streaming.");
+            }
+
+            var uri = new UriBuilder(DefaultStreamApiBase + "bigriver/subPlayer.aspx")
+            {
+                Query = string.Join("&", new[]
+                {
+                    "platformID=" + Uri.EscapeDataString(ResolvePlatformId(preferredFormat).ToString(CultureInfo.InvariantCulture)),
+                    "trackID=" + Uri.EscapeDataString(trackId),
+                    "app=1",
+                    "subscriptionID=" + Uri.EscapeDataString(subscription.LegacySubscriptionID),
+                    "subCostplanIDAccessList=" + Uri.EscapeDataString(planId),
+                    "nn_userID=" + Uri.EscapeDataString(userId),
+                    "startDateStamp=" + Uri.EscapeDataString(ToUnixTimestamp(subscription.StartedAt)),
+                    "endDateStamp=" + Uri.EscapeDataString(ToUnixTimestamp(subscription.EndsAt))
+                })
+            };
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri.Uri);
+            request.Headers.TryAddWithoutValidation("User-Agent", UserAgentTwo);
+            using var response = await _http.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException("Nugs entitled audio resolution request failed.");
+            }
+
+            var stream = await JsonSerializer.DeserializeAsync<StreamMeta>(await response.Content.ReadAsStreamAsync(ct), JsonOptions, ct);
+            if (string.IsNullOrWhiteSpace(stream?.StreamLink) || !Uri.TryCreate(stream.StreamLink, UriKind.Absolute, out var streamUri))
+            {
+                throw new InvalidOperationException("Nugs did not return an entitled audio URL.");
+            }
+
+            return streamUri;
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or FormatException)
+        {
+            throw new InvalidOperationException("Nugs entitled audio resolution failed.", ex);
+        }
+    }
+
+    private static int ResolvePlatformId(string? preferredFormat) => preferredFormat?.Trim().ToLowerInvariant() switch
+    {
+        "alac" => 1,
+        "flac" => 2,
+        "mqa" => 3,
+        "aac" => 5,
+        _ => 2
+    };
+
+    private static string ToUnixTimestamp(string value)
+    {
+        if (!DateTimeOffset.TryParseExact(value, "MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var timestamp))
+        {
+            throw new FormatException("Nugs subscription timestamp was invalid.");
+        }
+
+        return timestamp.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string? FirstNonEmpty(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private static HttpClient CreateClient()
     {
@@ -200,4 +292,5 @@ public sealed class NugsApiClient
     public sealed record PlistBody(string PlayListName, List<PlistItemBody> Items);
     public sealed record PlistItemBody(Track Track);
     public sealed record Track(int TrackID, string SongTitle, string? ClipURL = null);
+    public sealed record StreamMeta([property: JsonPropertyName("streamLink")] string? StreamLink);
 }

@@ -329,6 +329,9 @@ public class WorkflowTests
         Assert.DoesNotContain("pass-123", result.Message);
         Assert.DoesNotContain("token-abc", result.Message);
         Assert.DoesNotContain("token=token-abc", job.ErrorMessage);
+        Assert.DoesNotContain("session-cookie-456", result.Message);
+        Assert.DoesNotContain("Bearer auth-header-789", result.Message);
+        Assert.DoesNotContain("sig=tokenized-url-012", result.Message);
         Assert.Contains("[REDACTED]", result.Message);
         Assert.Equal(result.Message, job.ErrorMessage);
     }
@@ -464,7 +467,7 @@ public class WorkflowTests
         public Task<AuthResult> AuthenticateAsync(Credentials credentials, CancellationToken ct) => Task.FromResult(new AuthResult(true, Id, "secret-ref", DisplayName, null, null));
         public Task<MediaDiscoveryResult> DiscoverAsync(Uri uri, CancellationToken ct) => Task.FromResult(new MediaDiscoveryResult(Id, uri, uri, "Title", null, new[] { new MediaItem("1", "Item", "audio", 0, new Dictionary<string, string>()) }, false, true, new Dictionary<string, string>()));
         public Task<DownloadPlan> BuildDownloadPlanAsync(MediaDiscoveryResult discovery, DownloadPreferences preferences, CancellationToken ct) => Task.FromResult(new DownloadPlan(Id, Guid.NewGuid(), discovery.Items, preferences.OutputRoot, preferences, Array.Empty<FileState>(), null));
-        public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct) => throw new InvalidOperationException("failed with pass-123 at https://media.example.test/file.flac?token=token-abc&x=1");
+        public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct) => throw new InvalidOperationException("failed with pass-123 at https://media.example.test/file.flac?token=token-abc&sig=tokenized-url-012 Cookie: session=session-cookie-456 Authorization: Bearer auth-header-789");
     }
 
     private sealed class SecretRejectingProvider : IMediaProvider

@@ -20,6 +20,7 @@ public sealed class NugsMediaProvider : INugsProvider
     };
 
     private readonly NugsApiClient _apiClient;
+    private EntitledAudioSession? _entitledAudioSession;
 
     public NugsMediaProvider()
         : this(new NugsApiClient())
@@ -51,18 +52,23 @@ public sealed class NugsMediaProvider : INugsProvider
 
     public async Task<AuthResult> AuthenticateAsync(Credentials credentials, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(credentials.Username) || string.IsNullOrWhiteSpace(credentials.Password))
+        if (string.IsNullOrWhiteSpace(credentials.Token) && (string.IsNullOrWhiteSpace(credentials.Username) || string.IsNullOrWhiteSpace(credentials.Password)))
         {
-            return new AuthResult(false, Id, null, credentials.Label ?? credentials.Username, null, "Missing username or password.");
+            return new AuthResult(false, Id, null, credentials.Label ?? credentials.Username, null, "Missing username and password or access token.");
         }
 
-        var token = await _apiClient.AuthenticateAsync(credentials.Username, credentials.Password, ct);
+        var token = !string.IsNullOrWhiteSpace(credentials.Token)
+            ? credentials.Token
+            : await _apiClient.AuthenticateAsync(credentials.Username!, credentials.Password!, ct);
         if (token is null)
         {
             return new AuthResult(false, Id, null, credentials.Label ?? credentials.Username, null, "Authentication failed.");
         }
 
         var userInfo = await _apiClient.GetUserInfoAsync(token, ct);
+        _entitledAudioSession = userInfo is null || string.IsNullOrWhiteSpace(userInfo.Sub)
+            ? null
+            : new EntitledAudioSession(token, userInfo.Sub);
         return new AuthResult(
             Success: true,
             ProviderId: Id,
@@ -324,14 +330,22 @@ public sealed class NugsMediaProvider : INugsProvider
         switch (expectedFile.Kind)
         {
             case FileKind.Audio:
-            case FileKind.Video:
-                var mediaUri = ResolveMediaUri(item);
+                var mediaUri = await ResolveAudioUriAsync(item, plan.Preferences, ct);
                 if (mediaUri is null)
                 {
-                    throw new InvalidOperationException($"No media URL is available for {expectedFile.Kind.ToString().ToLowerInvariant()} item {item?.Id ?? index.ToString()}.");
+                    throw new InvalidOperationException($"No media URL is available for audio item {item?.Id ?? index.ToString()}.");
                 }
 
                 await DownloadMediaFileAtomicallyAsync(mediaUri, targetPath, ct);
+                break;
+            case FileKind.Video:
+                var videoUri = ResolveMediaUri(item);
+                if (videoUri is null)
+                {
+                    throw new InvalidOperationException($"No media URL is available for video item {item?.Id ?? index.ToString()}.");
+                }
+
+                await DownloadMediaFileAtomicallyAsync(videoUri, targetPath, ct);
                 break;
             case FileKind.Metadata:
                 await WriteTextFileAtomicallyAsync(targetPath, BuildMetadataFile(plan), ct);
@@ -406,6 +420,29 @@ public sealed class NugsMediaProvider : INugsProvider
         }
 
         return ResolveMetadataUri(item.Metadata, "downloadUrl", "mediaUrl", "streamUrl", "clipUrl", "clipURL", "url");
+    }
+
+    private async Task<Uri?> ResolveAudioUriAsync(MediaItem? item, DownloadPreferences preferences, CancellationToken ct)
+    {
+        if (item is null)
+        {
+            return null;
+        }
+
+        var session = _entitledAudioSession;
+        if (session is null)
+        {
+            return ResolveMediaUri(item);
+        }
+
+        var trackId = item.Metadata.TryGetValue("trackId", out var metadataTrackId) && !string.IsNullOrWhiteSpace(metadataTrackId)
+            ? metadataTrackId
+            : item.Id;
+        var format = item.Metadata.TryGetValue("selectedAudioFormat", out var selectedFormat)
+            ? selectedFormat
+            : preferences.PreferredAudioFormat;
+
+        return await _apiClient.ResolveFullQualityAudioUrlAsync(session.AccessToken, session.UserId, trackId, format, ct);
     }
 
     private static Uri? ResolveMetadataUri(object? metadata, params string[] keys)
@@ -596,4 +633,6 @@ public sealed class NugsMediaProvider : INugsProvider
 
         return string.IsNullOrWhiteSpace(value) ? "untitled" : value.Trim();
     }
+
+    private sealed record EntitledAudioSession(string AccessToken, string UserId);
 }

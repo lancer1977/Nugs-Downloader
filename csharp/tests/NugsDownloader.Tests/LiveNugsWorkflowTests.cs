@@ -17,7 +17,7 @@ public sealed class LiveNugsWorkflowTests
 
     [Fact]
     [Trait("Category", "LiveNugs")]
-    public async Task DownloadWorkflow_CompletesARepresentativeLiveNugsDownload()
+    public async Task DownloadWorkflow_CompletesOptInFullQualityLiveNugsDownload()
     {
         var secrets = LiveNugsSecrets.Load();
         if (!secrets.Enabled)
