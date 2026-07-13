@@ -21,7 +21,7 @@ public sealed class SqliteJobRepository : IJobRepository
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT Id, ProviderId, SourceUrl, DisplayName, JobStatus, RequestedAt, StartedAt, CompletedAt, ErrorMessage, OutputPath, CredentialLabel, CredentialUsername, PreferencesJson
+                SELECT Id, ProviderId, SourceUrl, DisplayName, JobStatus, RequestedAt, StartedAt, CompletedAt, ErrorMessage, OutputPath, CredentialLabel, CredentialUsername, PreferencesJson, LeaseOwnerId, LeaseAcquiredAt, LeaseExpiresAt, RetryCount, NextAttemptAt
                 FROM jobs
                 WHERE Id = $id
                 LIMIT 1;
@@ -41,7 +41,7 @@ public sealed class SqliteJobRepository : IJobRepository
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT Id, ProviderId, SourceUrl, DisplayName, JobStatus, RequestedAt, StartedAt, CompletedAt, ErrorMessage, OutputPath, CredentialLabel, CredentialUsername, PreferencesJson
+                SELECT Id, ProviderId, SourceUrl, DisplayName, JobStatus, RequestedAt, StartedAt, CompletedAt, ErrorMessage, OutputPath, CredentialLabel, CredentialUsername, PreferencesJson, LeaseOwnerId, LeaseAcquiredAt, LeaseExpiresAt, RetryCount, NextAttemptAt
                 FROM jobs
                 ORDER BY RequestedAt, rowid;
                 """;
@@ -61,9 +61,9 @@ public sealed class SqliteJobRepository : IJobRepository
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 INSERT INTO jobs (
-                    Id, ProviderId, SourceUrl, DisplayName, JobStatus, RequestedAt, StartedAt, CompletedAt, ErrorMessage, OutputPath, CredentialLabel, CredentialUsername, PreferencesJson
+                    Id, ProviderId, SourceUrl, DisplayName, JobStatus, RequestedAt, StartedAt, CompletedAt, ErrorMessage, OutputPath, CredentialLabel, CredentialUsername, PreferencesJson, LeaseOwnerId, LeaseAcquiredAt, LeaseExpiresAt, RetryCount, NextAttemptAt
                 ) VALUES (
-                    $Id, $ProviderId, $SourceUrl, $DisplayName, $JobStatus, $RequestedAt, $StartedAt, $CompletedAt, $ErrorMessage, $OutputPath, $CredentialLabel, $CredentialUsername, $PreferencesJson
+                    $Id, $ProviderId, $SourceUrl, $DisplayName, $JobStatus, $RequestedAt, $StartedAt, $CompletedAt, $ErrorMessage, $OutputPath, $CredentialLabel, $CredentialUsername, $PreferencesJson, $LeaseOwnerId, $LeaseAcquiredAt, $LeaseExpiresAt, $RetryCount, $NextAttemptAt
                 )
                 ON CONFLICT(Id) DO UPDATE SET
                     ProviderId = excluded.ProviderId,
@@ -77,7 +77,12 @@ public sealed class SqliteJobRepository : IJobRepository
                     OutputPath = excluded.OutputPath,
                     CredentialLabel = excluded.CredentialLabel,
                     CredentialUsername = excluded.CredentialUsername,
-                    PreferencesJson = excluded.PreferencesJson;
+                    PreferencesJson = excluded.PreferencesJson,
+                    LeaseOwnerId = excluded.LeaseOwnerId,
+                    LeaseAcquiredAt = excluded.LeaseAcquiredAt,
+                    LeaseExpiresAt = excluded.LeaseExpiresAt,
+                    RetryCount = excluded.RetryCount,
+                    NextAttemptAt = excluded.NextAttemptAt;
                 """;
             AddParameter(command, "$Id", job.Id.ToString());
             AddParameter(command, "$ProviderId", job.ProviderId);
@@ -92,6 +97,11 @@ public sealed class SqliteJobRepository : IJobRepository
             AddParameter(command, "$CredentialLabel", job.CredentialLabel);
             AddParameter(command, "$CredentialUsername", job.CredentialUsername);
             AddParameter(command, "$PreferencesJson", job.Preferences is null ? null : JsonSerializer.Serialize(job.Preferences, JsonOptions));
+            AddParameter(command, "$LeaseOwnerId", job.LeaseOwnerId);
+            AddParameter(command, "$LeaseAcquiredAt", SqliteStateStore.Encode(job.LeaseAcquiredAt));
+            AddParameter(command, "$LeaseExpiresAt", SqliteStateStore.Encode(job.LeaseExpiresAt));
+            AddParameter(command, "$RetryCount", job.RetryCount);
+            AddParameter(command, "$NextAttemptAt", SqliteStateStore.Encode(job.NextAttemptAt));
             await command.ExecuteNonQueryAsync(ct);
         }, ct);
 
@@ -108,7 +118,12 @@ public sealed class SqliteJobRepository : IJobRepository
         reader.GetString(9),
         reader.IsDBNull(10) ? null : reader.GetString(10),
         reader.IsDBNull(11) ? null : reader.GetString(11),
-        reader.IsDBNull(12) ? null : JsonSerializer.Deserialize<DownloadPreferences>(reader.GetString(12), JsonOptions));
+        reader.IsDBNull(12) ? null : JsonSerializer.Deserialize<DownloadPreferences>(reader.GetString(12), JsonOptions),
+        reader.IsDBNull(13) ? null : reader.GetString(13),
+        reader.IsDBNull(14) ? null : SqliteStateStore.DecodeDateTimeOffset(reader.GetString(14)),
+        reader.IsDBNull(15) ? null : SqliteStateStore.DecodeDateTimeOffset(reader.GetString(15)),
+        reader.GetInt32(16),
+        reader.IsDBNull(17) ? null : SqliteStateStore.DecodeDateTimeOffset(reader.GetString(17)));
 
     private static void AddParameter(SqliteCommand command, string name, object? value)
     {

@@ -107,7 +107,43 @@ public sealed class SqliteStateStore
             );
             """;
         await command.ExecuteNonQueryAsync(ct);
+        await EnsureJobLeaseColumnsAsync(connection, ct);
         _initialized = true;
+    }
+
+    // Existing installations predate durable worker leases. SQLite has no
+    // ADD COLUMN IF NOT EXISTS, so make this migration idempotent explicitly.
+    private static async Task EnsureJobLeaseColumnsAsync(SqliteConnection connection, CancellationToken ct)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var columns = connection.CreateCommand())
+        {
+            columns.CommandText = "PRAGMA table_info(jobs);";
+            await using var reader = await columns.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                existing.Add(reader.GetString(1));
+            }
+        }
+
+        foreach (var (name, type) in new[]
+        {
+            ("LeaseOwnerId", "TEXT NULL"),
+            ("LeaseAcquiredAt", "TEXT NULL"),
+            ("LeaseExpiresAt", "TEXT NULL"),
+            ("RetryCount", "INTEGER NOT NULL DEFAULT 0"),
+            ("NextAttemptAt", "TEXT NULL")
+        })
+        {
+            if (existing.Contains(name))
+            {
+                continue;
+            }
+
+            await using var alter = connection.CreateCommand();
+            alter.CommandText = $"ALTER TABLE jobs ADD COLUMN {name} {type};";
+            await alter.ExecuteNonQueryAsync(ct);
+        }
     }
 
     private string BuildConnectionString() => new SqliteConnectionStringBuilder
