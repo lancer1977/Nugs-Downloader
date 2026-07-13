@@ -35,7 +35,12 @@ public class SqliteRepositoryTests
             "Downloads",
             "Main",
             "alice",
-            new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true));
+            new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true),
+            "test-worker",
+            DateTimeOffset.Parse("2026-05-22T10:00:05.0000000+00:00"),
+            DateTimeOffset.Parse("2026-05-22T10:05:05.0000000+00:00"),
+            2,
+            DateTimeOffset.Parse("2026-05-22T10:06:05.0000000+00:00"));
 
         var fileState = new FileState(
             Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),

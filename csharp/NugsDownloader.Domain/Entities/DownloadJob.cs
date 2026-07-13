@@ -15,7 +15,12 @@ public sealed record DownloadJob(
     string OutputPath,
     string? CredentialLabel = null,
     string? CredentialUsername = null,
-    DownloadPreferences? Preferences = null);
+    DownloadPreferences? Preferences = null,
+    string? LeaseOwnerId = null,
+    DateTimeOffset? LeaseAcquiredAt = null,
+    DateTimeOffset? LeaseExpiresAt = null,
+    int RetryCount = 0,
+    DateTimeOffset? NextAttemptAt = null);
 
 public enum DownloadJobStatus
 {
@@ -28,4 +33,3 @@ public enum DownloadJobStatus
     Failed,
     Cancelled
 }
-

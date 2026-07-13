@@ -335,6 +335,9 @@ public class ComponentTests : BunitContext
             RetriedJobId = jobId;
             return Task.FromResult(new StartDownloadResult(jobId, "nugs", "RetryQueued", "ready"));
         }
+
+        public Task<StartDownloadRequest?> BuildReplayRequestAsync(Guid jobId, CancellationToken ct) =>
+            Task.FromResult<StartDownloadRequest?>(null);
     }
 
     private sealed class MemoryJobRepository : IJobRepository

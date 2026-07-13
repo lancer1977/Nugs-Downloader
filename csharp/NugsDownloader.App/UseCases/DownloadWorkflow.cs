@@ -43,6 +43,7 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
 
         var jobId = request.JobId ?? Guid.NewGuid();
         var startedAt = DateTimeOffset.UtcNow;
+        var existingJob = request.JobId is null ? null : await _jobRepository.GetAsync(jobId, ct);
 
         var pendingJob = new DownloadJob(
             jobId,
@@ -57,7 +58,12 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             request.Preferences.OutputRoot,
             request.Credentials.Label,
             request.Credentials.Username,
-            request.Preferences);
+            request.Preferences,
+            existingJob?.LeaseOwnerId,
+            existingJob?.LeaseAcquiredAt,
+            existingJob?.LeaseExpiresAt,
+            existingJob?.RetryCount ?? 0,
+            existingJob?.NextAttemptAt);
         await _jobRepository.SaveAsync(pendingJob, ct);
         var currentJob = pendingJob;
 
@@ -92,7 +98,12 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
                 request.Preferences.OutputRoot,
                 request.Credentials.Label,
                 request.Credentials.Username,
-                request.Preferences);
+                request.Preferences,
+                existingJob?.LeaseOwnerId,
+                existingJob?.LeaseAcquiredAt,
+                existingJob?.LeaseExpiresAt,
+                existingJob?.RetryCount ?? 0,
+                existingJob?.NextAttemptAt);
 
             await _jobRepository.SaveAsync(job, ct);
             currentJob = job;
@@ -247,6 +258,12 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
         }, ct);
 
         return new StartDownloadResult(jobId, job.ProviderId, "RetryQueued", "Job is ready to retry.");
+    }
+
+    public async Task<StartDownloadRequest?> BuildReplayRequestAsync(Guid jobId, CancellationToken ct)
+    {
+        var job = await _jobRepository.GetAsync(jobId, ct);
+        return job is null ? null : await BuildReplayRequestAsync(job, ct);
     }
 
     private async Task<StartDownloadRequest?> BuildReplayRequestAsync(DownloadJob job, CancellationToken ct)
