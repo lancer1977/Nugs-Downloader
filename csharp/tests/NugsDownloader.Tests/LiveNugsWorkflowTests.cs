@@ -56,7 +56,9 @@ public sealed class LiveNugsWorkflowTests
             // Kept until after assertions below; cleaned at end of test.
         }
 
-        Assert.Equal("Completed", result.Status);
+        Assert.True(
+            string.Equals("Completed", result.Status, StringComparison.Ordinal),
+            $"Live Nugs workflow returned {result.Status}: {result.Message}");
         Assert.Contains("Processed", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.NotEmpty(progress.Reports);
 

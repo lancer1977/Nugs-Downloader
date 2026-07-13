@@ -18,7 +18,7 @@ public sealed class SqliteCredentialStore : ICredentialStore
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT Id, ProviderId, Label, Username, SecretRef, AuthState, LastVerifiedAt
+                SELECT Id, ProviderId, Label, Username, SecretRef, AuthState, LastVerifiedAt, CredentialKind
                 FROM provider_accounts
                 WHERE ProviderId = $ProviderId AND Label = $Label
                 LIMIT 1;
@@ -34,7 +34,7 @@ public sealed class SqliteCredentialStore : ICredentialStore
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT Id, ProviderId, Label, Username, SecretRef, AuthState, LastVerifiedAt
+                SELECT Id, ProviderId, Label, Username, SecretRef, AuthState, LastVerifiedAt, CredentialKind
                 FROM provider_accounts
                 ORDER BY rowid;
                 """;
@@ -54,16 +54,17 @@ public sealed class SqliteCredentialStore : ICredentialStore
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 INSERT INTO provider_accounts (
-                    Id, ProviderId, Label, Username, SecretRef, AuthState, LastVerifiedAt
+                    Id, ProviderId, Label, Username, SecretRef, AuthState, LastVerifiedAt, CredentialKind
                 ) VALUES (
-                    $Id, $ProviderId, $Label, $Username, $SecretRef, $AuthState, $LastVerifiedAt
+                    $Id, $ProviderId, $Label, $Username, $SecretRef, $AuthState, $LastVerifiedAt, $CredentialKind
                 )
                 ON CONFLICT(ProviderId, Label) DO UPDATE SET
                     Id = excluded.Id,
                     Username = excluded.Username,
                     SecretRef = excluded.SecretRef,
                     AuthState = excluded.AuthState,
-                    LastVerifiedAt = excluded.LastVerifiedAt;
+                    LastVerifiedAt = excluded.LastVerifiedAt,
+                    CredentialKind = excluded.CredentialKind;
                 """;
             AddParameter(command, "$Id", account.Id.ToString());
             AddParameter(command, "$ProviderId", account.ProviderId);
@@ -72,6 +73,7 @@ public sealed class SqliteCredentialStore : ICredentialStore
             AddParameter(command, "$SecretRef", account.SecretRef);
             AddParameter(command, "$AuthState", (int)account.AuthState);
             AddParameter(command, "$LastVerifiedAt", SqliteStateStore.Encode(account.LastVerifiedAt));
+            AddParameter(command, "$CredentialKind", (int)account.CredentialKind);
             await command.ExecuteNonQueryAsync(ct);
         }, ct);
 
@@ -82,7 +84,8 @@ public sealed class SqliteCredentialStore : ICredentialStore
         reader.GetString(3),
         reader.GetString(4),
         (AuthenticationState)reader.GetInt32(5),
-        reader.IsDBNull(6) ? null : SqliteStateStore.DecodeDateTimeOffset(reader.GetString(6)));
+        reader.IsDBNull(6) ? null : SqliteStateStore.DecodeDateTimeOffset(reader.GetString(6)),
+        (CredentialKind)reader.GetInt32(7));
 
     private static void AddParameter(SqliteCommand command, string name, object? value)
     {
