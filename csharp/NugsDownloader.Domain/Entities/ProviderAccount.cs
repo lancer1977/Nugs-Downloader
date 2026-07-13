@@ -7,7 +7,14 @@ public sealed record ProviderAccount(
     string Username,
     string SecretRef,
     AuthenticationState AuthState,
-    DateTimeOffset? LastVerifiedAt);
+    DateTimeOffset? LastVerifiedAt,
+    CredentialKind CredentialKind = CredentialKind.Password);
+
+public enum CredentialKind
+{
+    Password,
+    Token
+}
 
 public enum AuthenticationState
 {
@@ -16,4 +23,3 @@ public enum AuthenticationState
     Expired,
     Invalid
 }
-

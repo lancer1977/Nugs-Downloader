@@ -110,7 +110,8 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
                     request.Credentials.Username ?? string.Empty,
                     secretRef,
                     AuthenticationState.Valid,
-                    DateTimeOffset.UtcNow);
+                    DateTimeOffset.UtcNow,
+                    ResolveCredentialKind(request.Credentials));
 
                 await _credentialStore.SaveAsync(account, ct);
             }
@@ -281,8 +282,8 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
 
         var credentials = new Credentials(
             account.Username,
-            secret,
-            null,
+            account.CredentialKind == CredentialKind.Password ? secret : null,
+            account.CredentialKind == CredentialKind.Token ? secret : null,
             account.Label);
 
         return new StartDownloadRequest(job.Id, provider.Id, job.SourceUrl, credentials, preferences);
@@ -336,4 +337,9 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    private static CredentialKind ResolveCredentialKind(Credentials credentials) =>
+        string.IsNullOrWhiteSpace(credentials.Password) && !string.IsNullOrWhiteSpace(credentials.Token)
+            ? CredentialKind.Token
+            : CredentialKind.Password;
 }

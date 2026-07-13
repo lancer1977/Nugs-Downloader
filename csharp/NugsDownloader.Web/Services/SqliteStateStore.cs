@@ -96,6 +96,7 @@ public sealed class SqliteStateStore
                 SecretRef TEXT NOT NULL,
                 AuthState INTEGER NOT NULL,
                 LastVerifiedAt TEXT NULL,
+                CredentialKind INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(ProviderId, Label)
             );
 
@@ -107,7 +108,26 @@ public sealed class SqliteStateStore
             );
             """;
         await command.ExecuteNonQueryAsync(ct);
+        await EnsureColumnAsync(connection, "provider_accounts", "CredentialKind", "INTEGER NOT NULL DEFAULT 0", ct);
         _initialized = true;
+    }
+
+    private static async Task EnsureColumnAsync(SqliteConnection connection, string table, string column, string definition, CancellationToken ct)
+    {
+        await using var columnsCommand = connection.CreateCommand();
+        columnsCommand.CommandText = $"PRAGMA table_info({table});";
+        await using var reader = await columnsCommand.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        await using var alterCommand = connection.CreateCommand();
+        alterCommand.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition};";
+        await alterCommand.ExecuteNonQueryAsync(ct);
     }
 
     private string BuildConnectionString() => new SqliteConnectionStringBuilder

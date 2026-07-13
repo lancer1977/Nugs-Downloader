@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using NugsDownloader.Domain.Entities;
 using NugsDownloader.Domain.ValueObjects;
@@ -55,7 +56,8 @@ public class SqliteRepositoryTests
             "alice",
             "nugs:Main",
             AuthenticationState.Valid,
-            DateTimeOffset.Parse("2026-05-22T10:02:00.0000000+00:00"));
+            DateTimeOffset.Parse("2026-05-22T10:02:00.0000000+00:00"),
+            CredentialKind.Token);
 
         var secretRef = await vault.StoreAsync("nugs", "Main", "secret-value", CancellationToken.None);
         await jobs.SaveAsync(job, CancellationToken.None);
@@ -72,5 +74,49 @@ public class SqliteRepositoryTests
         Assert.Equal(account, roundTripAccount);
         Assert.Equal("secret-value", roundTripSecret);
         Assert.True(File.Exists(paths.DatabasePath));
+    }
+
+    [Fact]
+    public async Task SqliteCredentialStore_UpgradesLegacyAccountsAndPreservesTokenCredentialKind()
+    {
+        var stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var options = Options.Create(new NugsDownloaderStorageOptions { StateDirectory = stateDirectory });
+        var paths = new SqliteStorePaths(options);
+        Directory.CreateDirectory(stateDirectory);
+
+        await using (var connection = new SqliteConnection($"Data Source={paths.DatabasePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE provider_accounts (
+                    Id TEXT PRIMARY KEY,
+                    ProviderId TEXT NOT NULL,
+                    Label TEXT NOT NULL,
+                    Username TEXT NOT NULL,
+                    SecretRef TEXT NOT NULL,
+                    AuthState INTEGER NOT NULL,
+                    LastVerifiedAt TEXT NULL,
+                    UNIQUE(ProviderId, Label)
+                );
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var store = new SqliteStateStore(paths);
+        var credentials = new SqliteCredentialStore(store);
+        var account = new ProviderAccount(
+            Guid.NewGuid(),
+            "nugs",
+            "Token",
+            string.Empty,
+            "nugs:Token",
+            AuthenticationState.Valid,
+            DateTimeOffset.UtcNow,
+            CredentialKind.Token);
+
+        await credentials.SaveAsync(account, CancellationToken.None);
+
+        Assert.Equal(account, await credentials.GetAsync("nugs", "Token", CancellationToken.None));
     }
 }

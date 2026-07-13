@@ -20,6 +20,9 @@ public sealed class NugsApiClient
     {
         PropertyNameCaseInsensitive = true
     };
+    private static readonly string[] StreamUrlFieldNames = ["streamLink", "streamUrl", "streamURL", "url", "mediaUrl", "downloadUrl"];
+    private static readonly string[] StreamUrlContainerFieldNames = ["data", "response", "result"];
+    private static readonly int[] AudioPlatformProbeOrder = [1, 4, 7, 10];
 
     private readonly HttpClient _http;
 
@@ -184,6 +187,11 @@ public sealed class NugsApiClient
         string? preferredFormat,
         CancellationToken ct)
     {
+        // Audio subPlayer requests select an entitled stream by platform. The
+        // preferred format is not mapped here because the documented audio
+        // endpoint contract provides no grounded format-to-platform mapping.
+        _ = preferredFormat;
+
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(trackId))
         {
             throw new InvalidOperationException("Authenticated Nugs subscription details are required to resolve entitled audio.");
@@ -203,36 +211,45 @@ public sealed class NugsApiClient
                 throw new InvalidOperationException("Nugs subscription details are incomplete for entitled audio streaming.");
             }
 
-            var uri = new UriBuilder(DefaultStreamApiBase + "bigriver/subPlayer.aspx")
+            var responseShapes = new List<string>();
+            foreach (var platformId in AudioPlatformProbeOrder)
             {
-                Query = string.Join("&", new[]
+                var uri = new UriBuilder(DefaultStreamApiBase + "bigriver/subPlayer.aspx")
                 {
-                    "platformID=" + Uri.EscapeDataString(ResolvePlatformId(preferredFormat).ToString(CultureInfo.InvariantCulture)),
-                    "trackID=" + Uri.EscapeDataString(trackId),
-                    "app=1",
-                    "subscriptionID=" + Uri.EscapeDataString(subscription.LegacySubscriptionID),
-                    "subCostplanIDAccessList=" + Uri.EscapeDataString(planId),
-                    "nn_userID=" + Uri.EscapeDataString(userId),
-                    "startDateStamp=" + Uri.EscapeDataString(ToUnixTimestamp(subscription.StartedAt)),
-                    "endDateStamp=" + Uri.EscapeDataString(ToUnixTimestamp(subscription.EndsAt))
-                })
-            };
+                    Query = string.Join("&", new[]
+                    {
+                        "platformID=" + platformId.ToString(CultureInfo.InvariantCulture),
+                        "trackID=" + Uri.EscapeDataString(trackId),
+                        "app=1",
+                        "subscriptionID=" + Uri.EscapeDataString(subscription.LegacySubscriptionID),
+                        "subCostplanIDAccessList=" + Uri.EscapeDataString(planId),
+                        "nn_userID=" + Uri.EscapeDataString(userId),
+                        "startDateStamp=" + Uri.EscapeDataString(ToUnixTimestamp(subscription.StartedAt)),
+                        "endDateStamp=" + Uri.EscapeDataString(ToUnixTimestamp(subscription.EndsAt))
+                    })
+                };
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, uri.Uri);
-            request.Headers.TryAddWithoutValidation("User-Agent", UserAgentTwo);
-            using var response = await _http.SendAsync(request, ct);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new InvalidOperationException("Nugs entitled audio resolution request failed.");
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri.Uri);
+                request.Headers.TryAddWithoutValidation("User-Agent", UserAgentTwo);
+                using var response = await _http.SendAsync(request, ct);
+                if (!response.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                using var streamDocument = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+                if (TryGetStreamUri(streamDocument.RootElement, out var streamUri))
+                {
+                    return streamUri;
+                }
+
+                responseShapes.Add($"platformID {platformId.ToString(CultureInfo.InvariantCulture)}: {DescribeJsonShape(streamDocument.RootElement)}");
             }
 
-            var stream = await JsonSerializer.DeserializeAsync<StreamMeta>(await response.Content.ReadAsStreamAsync(ct), JsonOptions, ct);
-            if (string.IsNullOrWhiteSpace(stream?.StreamLink) || !Uri.TryCreate(stream.StreamLink, UriKind.Absolute, out var streamUri))
-            {
-                throw new InvalidOperationException("Nugs did not return an entitled audio URL.");
-            }
-
-            return streamUri;
+            var diagnostic = responseShapes.Count > 0
+                ? $" Response shapes: {string.Join("; ", responseShapes)}."
+                : string.Empty;
+            throw new InvalidOperationException("Nugs did not return an entitled audio URL." + diagnostic);
         }
         catch (InvalidOperationException)
         {
@@ -244,18 +261,10 @@ public sealed class NugsApiClient
         }
     }
 
-    private static int ResolvePlatformId(string? preferredFormat) => preferredFormat?.Trim().ToLowerInvariant() switch
-    {
-        "alac" => 1,
-        "flac" => 2,
-        "mqa" => 3,
-        "aac" => 5,
-        _ => 2
-    };
-
     private static string ToUnixTimestamp(string value)
     {
-        if (!DateTimeOffset.TryParseExact(value, "MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var timestamp))
+        if (!DateTimeOffset.TryParseExact(value, "MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var timestamp)
+            && !DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal, out timestamp))
         {
             throw new FormatException("Nugs subscription timestamp was invalid.");
         }
@@ -264,6 +273,75 @@ public sealed class NugsApiClient
     }
 
     private static string? FirstNonEmpty(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    private static bool TryGetStreamUri(JsonElement root, out Uri streamUri)
+    {
+        if (TryGetStreamUriFromObject(root, out streamUri))
+        {
+            return true;
+        }
+
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in root.EnumerateObject())
+            {
+                if (MatchesAllowedFieldName(property.Name, StreamUrlContainerFieldNames)
+                    && TryGetStreamUriFromObject(property.Value, out streamUri))
+                {
+                    return true;
+                }
+            }
+        }
+
+        streamUri = null!;
+        return false;
+    }
+
+    private static bool TryGetStreamUriFromObject(JsonElement element, out Uri streamUri)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (MatchesAllowedFieldName(property.Name, StreamUrlFieldNames)
+                    && property.Value.ValueKind == JsonValueKind.String
+                    && Uri.TryCreate(property.Value.GetString(), UriKind.Absolute, out var candidate)
+                    && (candidate.Scheme == Uri.UriSchemeHttp || candidate.Scheme == Uri.UriSchemeHttps))
+                {
+                    streamUri = candidate;
+                    return true;
+                }
+            }
+        }
+
+        streamUri = null!;
+        return false;
+    }
+
+    private static bool MatchesAllowedFieldName(string value, IEnumerable<string> allowedNames) =>
+        allowedNames.Any(allowedName => string.Equals(value, allowedName, StringComparison.OrdinalIgnoreCase));
+
+    private static string DescribeJsonShape(JsonElement element)
+    {
+        var kind = DescribeJsonValueKind(element.ValueKind);
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return kind;
+        }
+
+        return $"{kind}{{{string.Join(", ", element.EnumerateObject().Select(property => $"{property.Name}:{DescribeJsonValueKind(property.Value.ValueKind)}"))}}}";
+    }
+
+    private static string DescribeJsonValueKind(JsonValueKind valueKind) => valueKind switch
+    {
+        JsonValueKind.Object => "object",
+        JsonValueKind.Array => "array",
+        JsonValueKind.String => "string",
+        JsonValueKind.Number => "number",
+        JsonValueKind.True or JsonValueKind.False => "bool",
+        JsonValueKind.Null => "null",
+        _ => "unknown"
+    };
 
     private static HttpClient CreateClient()
     {
@@ -292,5 +370,4 @@ public sealed class NugsApiClient
     public sealed record PlistBody(string PlayListName, List<PlistItemBody> Items);
     public sealed record PlistItemBody(Track Track);
     public sealed record Track(int TrackID, string SongTitle, string? ClipURL = null);
-    public sealed record StreamMeta([property: JsonPropertyName("streamLink")] string? StreamLink);
 }
