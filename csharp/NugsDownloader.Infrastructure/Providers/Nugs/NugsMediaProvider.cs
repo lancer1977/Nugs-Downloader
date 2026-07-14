@@ -20,6 +20,8 @@ public sealed class NugsMediaProvider : INugsProvider
     };
 
     private readonly NugsApiClient _apiClient;
+    private string? _accessToken;
+    private string? _authenticatedUserId;
 
     public NugsMediaProvider()
         : this(new NugsApiClient())
@@ -63,6 +65,8 @@ public sealed class NugsMediaProvider : INugsProvider
         }
 
         var userInfo = await _apiClient.GetUserInfoAsync(token, ct);
+        _accessToken = token;
+        _authenticatedUserId = userInfo?.Sub;
         return new AuthResult(
             Success: true,
             ProviderId: Id,
@@ -325,7 +329,9 @@ public sealed class NugsMediaProvider : INugsProvider
         {
             case FileKind.Audio:
             case FileKind.Video:
-                var mediaUri = ResolveMediaUri(item);
+                var mediaUri = expectedFile.Kind == FileKind.Audio
+                    ? await ResolveAudioMediaUriAsync(item, ct)
+                    : ResolveMediaUri(item);
                 if (mediaUri is null)
                 {
                     throw new InvalidOperationException($"No media URL is available for {expectedFile.Kind.ToString().ToLowerInvariant()} item {item?.Id ?? index.ToString()}.");
@@ -377,6 +383,24 @@ public sealed class NugsMediaProvider : INugsProvider
 
             throw;
         }
+    }
+
+    private async Task<Uri?> ResolveAudioMediaUriAsync(MediaItem? item, CancellationToken ct)
+    {
+        if (item is null
+            || string.IsNullOrWhiteSpace(_accessToken)
+            || string.IsNullOrWhiteSpace(_authenticatedUserId))
+        {
+            return ResolveMediaUri(item);
+        }
+
+        item.Metadata.TryGetValue("selectedAudioFormat", out var preferredFormat);
+        return await _apiClient.ResolveFullQualityAudioUrlAsync(
+            _accessToken,
+            _authenticatedUserId,
+            item.Id,
+            preferredFormat,
+            ct);
     }
 
     private static async Task WriteTextFileAtomicallyAsync(string targetPath, string contents, CancellationToken ct)
