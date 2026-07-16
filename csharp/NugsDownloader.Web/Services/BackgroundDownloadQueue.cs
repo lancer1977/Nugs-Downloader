@@ -165,7 +165,8 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
         var jobs = await _jobRepository.ListAsync(ct);
         var now = DateTimeOffset.UtcNow;
         foreach (var job in jobs.Where(job =>
-                     (job.Status is DownloadJobStatus.Pending or DownloadJobStatus.Discovering or DownloadJobStatus.Running) &&
+                     (job.Status is DownloadJobStatus.Pending or DownloadJobStatus.Discovering or DownloadJobStatus.Running ||
+                      job.Status == DownloadJobStatus.Ready && job.LeaseOwnerId is not null) &&
                      (job.LeaseExpiresAt is null || job.LeaseExpiresAt <= now)))
         {
             await _jobRepository.SaveAsync(job with

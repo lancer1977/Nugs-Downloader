@@ -132,6 +132,29 @@ public sealed class BackgroundDownloadQueueTests
     }
 
     [Fact]
+    public async Task Startup_RecoversClaimedReadyJobWithExpiredLeaseAndNoDueTimestamp()
+    {
+        var repository = new MemoryJobs();
+        var jobId = Guid.NewGuid();
+        var claimed = Job(jobId, DownloadJobStatus.Ready, "departed-worker") with { NextAttemptAt = null };
+        await repository.SaveAsync(claimed, CancellationToken.None);
+        var workflow = new RecordingWorkflow(repository, jobId);
+        await using var provider = new ServiceCollection()
+            .AddScoped<IDownloadWorkflow>(_ => workflow)
+            .BuildServiceProvider();
+        var queue = new BackgroundDownloadQueue(provider.GetRequiredService<IServiceScopeFactory>(), repository,
+            Options.Create(new BackgroundDownloadQueueOptions { Capacity = 2, Concurrency = 1, LeaseSeconds = 60, RetryDelaySeconds = 1 }));
+
+        await queue.StartAsync(CancellationToken.None);
+        await workflow.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queue.StopAsync(CancellationToken.None);
+
+        var recovered = await repository.GetAsync(jobId, CancellationToken.None);
+        Assert.Equal(DownloadJobStatus.Completed, recovered!.Status);
+        Assert.Equal(1, workflow.StartCount);
+    }
+
+    [Fact]
     public async Task Worker_RenewsLeaseWhileDownloadIsActive()
     {
         var repository = new MemoryJobs();
