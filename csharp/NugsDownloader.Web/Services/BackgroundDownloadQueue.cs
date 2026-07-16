@@ -107,9 +107,9 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
         }
 
         var now = DateTimeOffset.UtcNow;
-        if (job.LeaseOwnerId is not null && (job.LeaseExpiresAt is null || job.LeaseExpiresAt > now))
+        if (!await _jobRepository.PrepareManualReplayAsync(jobId, now, ct))
         {
-            return new StartDownloadResult(jobId, job.ProviderId, "LeaseActive", "The job is already owned by an active worker.");
+            return new StartDownloadResult(jobId, job.ProviderId, "LeaseActive", "The job cannot be replayed because it is terminal or already owned by an active worker.");
         }
 
         using var scope = _scopeFactory.CreateScope();
@@ -307,7 +307,7 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
     private async Task ReleaseTerminalLeaseAsync(Guid jobId, CancellationToken ct)
     {
         var job = await _jobRepository.GetAsync(jobId, ct);
-        if (job?.Status is not (DownloadJobStatus.Completed or DownloadJobStatus.Cancelled))
+        if (job?.Status is not (DownloadJobStatus.Completed or DownloadJobStatus.Cancelled or DownloadJobStatus.Failed))
         {
             return;
         }

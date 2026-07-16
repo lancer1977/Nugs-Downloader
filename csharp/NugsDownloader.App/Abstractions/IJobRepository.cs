@@ -8,6 +8,27 @@ public interface IJobRepository
     Task<IReadOnlyList<DownloadJob>> ListAsync(CancellationToken ct);
     Task SaveAsync(DownloadJob job, CancellationToken ct);
 
+    async Task<bool> PrepareManualReplayAsync(Guid jobId, DateTimeOffset now, CancellationToken ct)
+    {
+        var job = await GetAsync(jobId, ct);
+        if (job is null || job.Status is DownloadJobStatus.Cancelled or DownloadJobStatus.Completed ||
+            job.LeaseExpiresAt is { } expiry && expiry > now)
+        {
+            return false;
+        }
+
+        await SaveAsync(job with
+        {
+            Status = DownloadJobStatus.Ready,
+            CompletedAt = null,
+            LeaseOwnerId = null,
+            LeaseAcquiredAt = null,
+            LeaseExpiresAt = null,
+            NextAttemptAt = null
+        }, ct);
+        return true;
+    }
+
     async Task<bool> SaveIfLeaseOwnedAsync(DownloadJob job, string workerId, CancellationToken ct)
     {
         var current = await GetAsync(job.Id, ct);

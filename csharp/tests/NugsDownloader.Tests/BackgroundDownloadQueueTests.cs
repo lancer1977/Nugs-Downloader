@@ -198,6 +198,48 @@ public sealed class BackgroundDownloadQueueTests
     }
 
     [Fact]
+    public async Task ManualRetry_ClearsAutomaticBackoffAndRunsImmediately()
+    {
+        var repository = new MemoryJobs();
+        var jobId = Guid.NewGuid();
+        await repository.SaveAsync(Job(jobId, DownloadJobStatus.Ready, null) with { NextAttemptAt = DateTimeOffset.UtcNow.AddHours(1) }, CancellationToken.None);
+        var workflow = new RecordingWorkflow(repository, jobId);
+        await using var provider = new ServiceCollection().AddScoped<IDownloadWorkflow>(_ => workflow).BuildServiceProvider();
+        var queue = new BackgroundDownloadQueue(provider.GetRequiredService<IServiceScopeFactory>(), repository,
+            Options.Create(new BackgroundDownloadQueueOptions { Capacity = 2, Concurrency = 1, LeaseSeconds = 60, RetryDelaySeconds = 1 }));
+
+        var result = await queue.RetryAsync(jobId, CancellationToken.None);
+        await queue.StartAsync(CancellationToken.None);
+        await workflow.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queue.StopAsync(CancellationToken.None);
+
+        Assert.Equal("RetryQueued", result.Status);
+        Assert.Equal(1, workflow.StartCount);
+        Assert.Null((await repository.GetAsync(jobId, CancellationToken.None))?.NextAttemptAt);
+    }
+
+    [Fact]
+    public async Task FinalFailure_ReleasesLeaseSoManualRetryCanRunImmediately()
+    {
+        var repository = new MemoryJobs();
+        var jobId = Guid.NewGuid();
+        await repository.SaveAsync(Job(jobId, DownloadJobStatus.Ready, null) with { NextAttemptAt = null }, CancellationToken.None);
+        var workflow = new RecordingWorkflow(repository, jobId, fail: true);
+        await using var provider = new ServiceCollection().AddScoped<IDownloadWorkflow>(_ => workflow).BuildServiceProvider();
+        var queue = new BackgroundDownloadQueue(provider.GetRequiredService<IServiceScopeFactory>(), repository,
+            Options.Create(new BackgroundDownloadQueueOptions { Capacity = 2, Concurrency = 1, LeaseSeconds = 60, RetryDelaySeconds = 1, MaxRetries = 0 }));
+
+        await queue.StartAsync(CancellationToken.None);
+        await queue.EnqueueAsync(Request(jobId), CancellationToken.None);
+        await workflow.Completed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var retry = await queue.RetryAsync(jobId, CancellationToken.None);
+        await queue.StopAsync(CancellationToken.None);
+
+        Assert.Equal("RetryQueued", retry.Status);
+        Assert.Null((await repository.GetAsync(jobId, CancellationToken.None))?.LeaseOwnerId);
+    }
+
+    [Fact]
     public async Task Scanner_MarksDueJobNeedsAuthenticationWhenReplayCredentialsAreUnavailable()
     {
         var repository = new MemoryJobs();
@@ -222,7 +264,7 @@ public sealed class BackgroundDownloadQueueTests
 
     private static DownloadJob Job(Guid id, DownloadJobStatus status, string? owner, DateTimeOffset? leaseExpiry = null) => new(id, "nugs", new Uri("https://example.com/release"), "Demo", status, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, status == DownloadJobStatus.Completed ? DateTimeOffset.UtcNow : null, null, "Downloads", "main", "user", null, owner, DateTimeOffset.UtcNow, leaseExpiry ?? DateTimeOffset.UtcNow.AddMinutes(-1));
 
-    private sealed class RecordingWorkflow(MemoryJobs repository, Guid? replayId, TimeSpan? delay = null, bool replayAll = false) : IDownloadWorkflow
+    private sealed class RecordingWorkflow(MemoryJobs repository, Guid? replayId, TimeSpan? delay = null, bool replayAll = false, bool fail = false) : IDownloadWorkflow
     {
         private int _active;
         public int StartCount { get; private set; }
@@ -242,9 +284,14 @@ public sealed class BackgroundDownloadQueueTests
             var previous = await repository.GetAsync(request.JobId!.Value, ct);
             if (previous is not null)
             {
-                await repository.SaveAsync(previous with { Status = DownloadJobStatus.Completed, CompletedAt = DateTimeOffset.UtcNow }, ct);
+                await repository.SaveAsync(previous with
+                {
+                    Status = fail ? DownloadJobStatus.Failed : DownloadJobStatus.Completed,
+                    CompletedAt = DateTimeOffset.UtcNow,
+                    ErrorMessage = fail ? "expected test failure" : null
+                }, ct);
             }
-            if (StartCount >= 2 || replayId is not null) Completed.TrySetResult(true);
+            if (fail || StartCount >= 2 || replayId is not null) Completed.TrySetResult(true);
             if (replayAll && StartCount >= 4) AllCompleted.TrySetResult(true);
             return new StartDownloadResult(request.JobId ?? Guid.NewGuid(), "nugs", "Completed", "done");
         }

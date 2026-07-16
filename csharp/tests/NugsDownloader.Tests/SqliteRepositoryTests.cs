@@ -184,6 +184,22 @@ public class SqliteRepositoryTests
     }
 
     [Fact]
+    public async Task SqliteJobRepository_PrepareManualReplayClearsFutureBackoff()
+    {
+        var stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var jobs = new SqliteJobRepository(new SqliteStateStore(new SqliteStorePaths(Options.Create(new NugsDownloaderStorageOptions { StateDirectory = stateDirectory }))));
+        var now = DateTimeOffset.UtcNow;
+        var job = new DownloadJob(Guid.NewGuid(), "nugs", new Uri("https://example.com/release/1"), "Demo", DownloadJobStatus.Failed, now, null, now, "failed", "Downloads", NextAttemptAt: now.AddHours(1));
+        await jobs.SaveAsync(job, CancellationToken.None);
+
+        Assert.True(await jobs.PrepareManualReplayAsync(job.Id, now, CancellationToken.None));
+        Assert.True(await jobs.TryAcquireLeaseAsync(job.Id, "worker-a", now, now.AddMinutes(1), CancellationToken.None));
+        var replay = await jobs.GetAsync(job.Id, CancellationToken.None);
+        Assert.Equal(DownloadJobStatus.Ready, replay?.Status);
+        Assert.Null(replay?.NextAttemptAt);
+    }
+
+    [Fact]
     public async Task SqliteJobRepository_FencesWritesFromWorkerThatLostLease()
     {
         var stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
