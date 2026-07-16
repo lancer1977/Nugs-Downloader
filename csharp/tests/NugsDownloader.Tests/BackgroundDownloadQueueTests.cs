@@ -82,9 +82,34 @@ public sealed class BackgroundDownloadQueueTests
         Assert.Equal(4, workflow.StartCount);
     }
 
+    [Fact]
+    public async Task Startup_DoesNotReplayJobWithUnexpiredLease()
+    {
+        var repository = new MemoryJobs();
+        var jobId = Guid.NewGuid();
+        var leaseExpiry = DateTimeOffset.UtcNow.AddMinutes(5);
+        await repository.SaveAsync(Job(jobId, DownloadJobStatus.Running, "active-worker", leaseExpiry), CancellationToken.None);
+        var workflow = new RecordingWorkflow(repository, null, replayAll: true);
+        await using var provider = new ServiceCollection()
+            .AddScoped<IDownloadWorkflow>(_ => workflow)
+            .BuildServiceProvider();
+        var queue = new BackgroundDownloadQueue(provider.GetRequiredService<IServiceScopeFactory>(), repository,
+            Options.Create(new BackgroundDownloadQueueOptions { Capacity = 2, Concurrency = 1, LeaseSeconds = 60, RetryDelaySeconds = 1 }));
+
+        await queue.StartAsync(CancellationToken.None);
+        await Task.Delay(150);
+        await queue.StopAsync(CancellationToken.None);
+
+        var job = await repository.GetAsync(jobId, CancellationToken.None);
+        Assert.Equal(0, workflow.StartCount);
+        Assert.Equal("active-worker", job!.LeaseOwnerId);
+        Assert.Equal(leaseExpiry, job.LeaseExpiresAt);
+        Assert.Equal(DownloadJobStatus.Running, job.Status);
+    }
+
     private static StartDownloadRequest Request(Guid? id = null) => new(id, "nugs", new Uri("https://example.com/release"), new Credentials("user", "secret", null, "main"), new DownloadPreferences(null, null, false, false, false, "Downloads", true, true));
 
-    private static DownloadJob Job(Guid id, DownloadJobStatus status, string? owner) => new(id, "nugs", new Uri("https://example.com/release"), "Demo", status, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, status == DownloadJobStatus.Completed ? DateTimeOffset.UtcNow : null, null, "Downloads", "main", "user", null, owner, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(1));
+    private static DownloadJob Job(Guid id, DownloadJobStatus status, string? owner, DateTimeOffset? leaseExpiry = null) => new(id, "nugs", new Uri("https://example.com/release"), "Demo", status, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, status == DownloadJobStatus.Completed ? DateTimeOffset.UtcNow : null, null, "Downloads", "main", "user", null, owner, DateTimeOffset.UtcNow, leaseExpiry ?? DateTimeOffset.UtcNow.AddMinutes(-1));
 
     private sealed class RecordingWorkflow(MemoryJobs repository, Guid? replayId, TimeSpan? delay = null, bool replayAll = false) : IDownloadWorkflow
     {

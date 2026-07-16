@@ -131,7 +131,10 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
     private async Task RecoverLeasesAndScheduleReadyJobsAsync(CancellationToken ct)
     {
         var jobs = await _jobRepository.ListAsync(ct);
-        foreach (var job in jobs.Where(job => job.Status is DownloadJobStatus.Pending or DownloadJobStatus.Discovering or DownloadJobStatus.Running))
+        var now = DateTimeOffset.UtcNow;
+        foreach (var job in jobs.Where(job =>
+                     (job.Status is DownloadJobStatus.Pending or DownloadJobStatus.Discovering or DownloadJobStatus.Running) &&
+                     (job.LeaseExpiresAt is null || job.LeaseExpiresAt <= now)))
         {
             await _jobRepository.SaveAsync(job with
             {
@@ -141,7 +144,7 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
                 LeaseOwnerId = null,
                 LeaseAcquiredAt = null,
                 LeaseExpiresAt = null,
-                NextAttemptAt = DateTimeOffset.UtcNow
+                NextAttemptAt = now
             }, ct);
         }
 
@@ -171,7 +174,6 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
                 continue;
             }
 
-            await _jobRepository.SaveAsync(job with { NextAttemptAt = null }, ct);
             await _queue.Writer.WriteAsync(replay with { JobId = job.Id }, ct);
         }
     }
