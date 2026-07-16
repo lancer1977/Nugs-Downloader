@@ -105,6 +105,38 @@ public sealed class SqliteJobRepository : IJobRepository
             await command.ExecuteNonQueryAsync(ct);
         }, ct);
 
+    public Task<bool> TryAcquireLeaseAsync(
+        Guid jobId,
+        string workerId,
+        DateTimeOffset acquiredAt,
+        DateTimeOffset expiresAt,
+        CancellationToken ct) =>
+        _store.ExecuteAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE jobs
+                SET LeaseOwnerId = $WorkerId,
+                    LeaseAcquiredAt = $AcquiredAt,
+                    LeaseExpiresAt = $ExpiresAt,
+                    NextAttemptAt = NULL
+                WHERE Id = $Id
+                  AND JobStatus NOT IN ($Cancelled, $Completed)
+                  AND (
+                      LeaseExpiresAt IS NULL
+                      OR LeaseExpiresAt <= $AcquiredAt
+                      OR LeaseOwnerId = $WorkerId
+                  );
+                """;
+            AddParameter(command, "$Id", jobId.ToString());
+            AddParameter(command, "$WorkerId", workerId);
+            AddParameter(command, "$AcquiredAt", SqliteStateStore.Encode(acquiredAt));
+            AddParameter(command, "$ExpiresAt", SqliteStateStore.Encode(expiresAt));
+            AddParameter(command, "$Cancelled", (int)DownloadJobStatus.Cancelled);
+            AddParameter(command, "$Completed", (int)DownloadJobStatus.Completed);
+            return await command.ExecuteNonQueryAsync(ct) == 1;
+        }, ct);
+
     private static DownloadJob MapJob(SqliteDataReader reader) => new(
         Guid.Parse(reader.GetString(0)),
         reader.GetString(1),

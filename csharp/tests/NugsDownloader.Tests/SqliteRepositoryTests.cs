@@ -124,4 +124,34 @@ public class SqliteRepositoryTests
 
         Assert.Equal(account, await credentials.GetAsync("nugs", "Token", CancellationToken.None));
     }
+
+    [Fact]
+    public async Task SqliteJobRepository_AcquiresLeaseWithSingleConditionalWriter()
+    {
+        var stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var store = new SqliteStateStore(new SqliteStorePaths(Options.Create(new NugsDownloaderStorageOptions { StateDirectory = stateDirectory })));
+        var first = new SqliteJobRepository(store);
+        var second = new SqliteJobRepository(store);
+        var job = new DownloadJob(
+            Guid.NewGuid(),
+            "nugs",
+            new Uri("https://example.com/release/1"),
+            "Demo",
+            DownloadJobStatus.Ready,
+            DateTimeOffset.UtcNow,
+            null,
+            null,
+            null,
+            "Downloads");
+        await first.SaveAsync(job, CancellationToken.None);
+        var now = DateTimeOffset.UtcNow;
+
+        var results = await Task.WhenAll(
+            first.TryAcquireLeaseAsync(job.Id, "worker-a", now, now.AddMinutes(5), CancellationToken.None),
+            second.TryAcquireLeaseAsync(job.Id, "worker-b", now, now.AddMinutes(5), CancellationToken.None));
+
+        Assert.Single(results, acquired => acquired);
+        var leased = await first.GetAsync(job.Id, CancellationToken.None);
+        Assert.Contains(leased!.LeaseOwnerId, new[] { "worker-a", "worker-b" });
+    }
 }

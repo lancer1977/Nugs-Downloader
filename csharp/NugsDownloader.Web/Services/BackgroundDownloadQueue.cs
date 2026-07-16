@@ -90,12 +90,11 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await RecoverLeasesAndScheduleReadyJobsAsync(stoppingToken);
-
         var workers = Enumerable.Range(0, _options.Concurrency)
             .Select(_ => RunWorkerAsync(stoppingToken))
             .ToArray();
 
+        await RecoverLeasesAndScheduleReadyJobsAsync(stoppingToken);
         var retryScanner = ScanForDueRetriesAsync(stoppingToken);
 
         await Task.WhenAll(workers.Append(retryScanner));
@@ -179,26 +178,13 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
 
     private async Task<bool> TryAcquireLeaseAsync(Guid jobId, CancellationToken ct)
     {
-        var job = await _jobRepository.GetAsync(jobId, ct);
-        if (job is null || job.Status is DownloadJobStatus.Cancelled or DownloadJobStatus.Completed)
-        {
-            return false;
-        }
-
         var now = DateTimeOffset.UtcNow;
-        if (job.LeaseExpiresAt is { } expiry && expiry > now && !string.Equals(job.LeaseOwnerId, _workerId, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        await _jobRepository.SaveAsync(job with
-        {
-            LeaseOwnerId = _workerId,
-            LeaseAcquiredAt = now,
-            LeaseExpiresAt = now.AddSeconds(_options.LeaseSeconds),
-            NextAttemptAt = null
-        }, ct);
-        return true;
+        return await _jobRepository.TryAcquireLeaseAsync(
+            jobId,
+            _workerId,
+            now,
+            now.AddSeconds(_options.LeaseSeconds),
+            ct);
     }
 
     private async Task ScheduleFailureRetryAsync(Guid jobId, CancellationToken ct)
