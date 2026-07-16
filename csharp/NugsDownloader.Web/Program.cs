@@ -28,9 +28,9 @@ builder.Services
     .AddInteractiveServerComponents();
 
 builder.Services.AddMudServices();
-builder.Services.AddSingleton<NugsDownloader.Domain.Providers.IMediaProvider, NugsMediaProvider>();
-builder.Services.AddSingleton<NugsDownloader.Domain.Providers.IMediaProvider, LivePhishMediaProvider>();
-builder.Services.AddSingleton<IProviderCatalog, InMemoryProviderCatalog>(sp =>
+builder.Services.AddScoped<NugsDownloader.Domain.Providers.IMediaProvider, NugsMediaProvider>();
+builder.Services.AddScoped<NugsDownloader.Domain.Providers.IMediaProvider, LivePhishMediaProvider>();
+builder.Services.AddScoped<IProviderCatalog, InMemoryProviderCatalog>(sp =>
     new InMemoryProviderCatalog(sp.GetServices<NugsDownloader.Domain.Providers.IMediaProvider>()));
 builder.Services.AddSingleton<SqliteStorePaths>();
 builder.Services.AddSingleton<SqliteStateStore>();

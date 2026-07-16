@@ -82,6 +82,31 @@ public class ComponentTests : BunitContext
     }
 
     [Fact]
+    public async Task QueuePage_MapsStoredTokenAccountToTokenCredentials()
+    {
+        var provider = new FakeProvider(capabilities: new ProviderCapabilities(true, false, false, true, true, false, new[] { "flac" }, Array.Empty<string>()));
+        var queue = new RecordingQueue();
+        var vault = new MemorySecretVault();
+        var secretRef = await vault.StoreAsync(provider.Id, "Token account", "stored-token", CancellationToken.None);
+        var account = new ProviderAccount(Guid.NewGuid(), provider.Id, "Token account", string.Empty, secretRef, AuthenticationState.Valid, DateTimeOffset.UtcNow, CredentialKind.Token);
+
+        Services.AddSingleton<IBackgroundDownloadQueue>(queue);
+        Services.AddSingleton<IProviderCatalog>(new InMemoryProviderCatalog(new[] { provider }));
+        Services.AddSingleton<IJobRepository>(new MemoryJobRepository(Array.Empty<DownloadJob>()));
+        Services.AddSingleton<IFileStateRepository>(new MemoryFileStateRepository(Array.Empty<FileState>()));
+        Services.AddSingleton<ICredentialStore>(new MemoryCredentialStore(new[] { account }));
+        Services.AddSingleton<ISecretVault>(vault);
+        Services.Configure<NugsDownloaderStorageOptions>(options => options.DownloadDirectory = "Downloads");
+
+        var cut = Render<Queue>();
+        cut.FindAll("input")[0].Change("https://example.com/release/1");
+        await cut.InvokeAsync(() => cut.Find("button[type=submit]").Click());
+
+        Assert.Equal("stored-token", queue.Request?.Credentials.Token);
+        Assert.Null(queue.Request?.Credentials.Password);
+    }
+
+    [Fact]
     public async Task LoginPage_ShowsHintsAndAuthResult()
     {
         var provider = new FakeProvider(
@@ -238,10 +263,10 @@ public class ComponentTests : BunitContext
     }
 
     [Fact]
-    public async Task JobDetailsPage_ResumeAndRetryActionsCallWorkflow()
+    public async Task JobDetailsPage_ResumeAndRetryActionsUseLeaseProtectedQueue()
     {
         var jobId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-        var workflow = new RecordingWorkflow();
+        var queue = new RecordingQueue();
         Services.AddSingleton<IJobRepository>(new MemoryJobRepository(new[]
         {
             new DownloadJob(jobId, "nugs", new Uri("https://example.com/release/1"), "Demo", DownloadJobStatus.Paused, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, "Downloads")
@@ -250,18 +275,17 @@ public class ComponentTests : BunitContext
         {
             new FileState(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), jobId, "Downloads/Demo/file.flac", FileKind.Audio, FileStatus.Partial, 0, 0, null, DateTimeOffset.UtcNow)
         }));
-        Services.AddSingleton<IDownloadWorkflow>(workflow);
-        Services.AddSingleton<IBackgroundDownloadQueue>(new RecordingQueue());
+        Services.AddSingleton<IBackgroundDownloadQueue>(queue);
 
         var cut = Render<JobDetails>(parameters => parameters.Add(p => p.JobId, jobId));
 
         await cut.InvokeAsync(() => cut.FindAll("button")[0].Click());
-        Assert.Equal(jobId, workflow.ResumedJobId);
-        Assert.Contains("ResumePrepared: ready", cut.Markup);
+        Assert.Equal(jobId, queue.ResumedJobId);
+        Assert.Contains("ResumeQueued: queued", cut.Markup);
 
         await cut.InvokeAsync(() => cut.FindAll("button")[1].Click());
-        Assert.Equal(jobId, workflow.RetriedJobId);
-        Assert.Contains("RetryQueued: ready", cut.Markup);
+        Assert.Equal(jobId, queue.RetriedJobId);
+        Assert.Contains("RetryQueued: queued", cut.Markup);
     }
 
     private sealed class FakeProvider : IMediaProvider
@@ -301,6 +325,8 @@ public class ComponentTests : BunitContext
     private sealed class RecordingQueue : IBackgroundDownloadQueue
     {
         public StartDownloadRequest? Request { get; private set; }
+        public Guid? ResumedJobId { get; private set; }
+        public Guid? RetriedJobId { get; private set; }
 
         public Task<StartDownloadResult> EnqueueAsync(StartDownloadRequest request, CancellationToken ct)
         {
@@ -310,6 +336,18 @@ public class ComponentTests : BunitContext
 
         public Task<StartDownloadResult> CancelAsync(Guid jobId, CancellationToken ct) =>
             Task.FromResult(new StartDownloadResult(jobId, "nugs", "Cancelled", "cancelled"));
+
+        public Task<StartDownloadResult> ResumeAsync(Guid jobId, CancellationToken ct)
+        {
+            ResumedJobId = jobId;
+            return Task.FromResult(new StartDownloadResult(jobId, "nugs", "ResumeQueued", "queued"));
+        }
+
+        public Task<StartDownloadResult> RetryAsync(Guid jobId, CancellationToken ct)
+        {
+            RetriedJobId = jobId;
+            return Task.FromResult(new StartDownloadResult(jobId, "nugs", "RetryQueued", "queued"));
+        }
     }
 
     private sealed class RecordingWorkflow : IDownloadWorkflow
@@ -335,6 +373,9 @@ public class ComponentTests : BunitContext
             RetriedJobId = jobId;
             return Task.FromResult(new StartDownloadResult(jobId, "nugs", "RetryQueued", "ready"));
         }
+
+        public Task<StartDownloadRequest?> BuildReplayRequestAsync(Guid jobId, CancellationToken ct) =>
+            Task.FromResult<StartDownloadRequest?>(null);
     }
 
     private sealed class MemoryJobRepository : IJobRepository

@@ -13,7 +13,7 @@ public sealed class LiveNugsWorkflowTests
 {
     private const string EnableFlag = "NUGS_LIVE_TESTS";
     private const string DefaultSecretsPath = "/home/lancer1977/.config/secrets/nugs-downloader.env";
-    private const string DefaultLiveUrl = "https://play.nugs.net/release/35892";
+    private const string DefaultLiveUrl = "https://play.nugs.net/release/48948";
 
     [Fact]
     [Trait("Category", "LiveNugs")]
@@ -50,41 +50,41 @@ public sealed class LiveNugsWorkflowTests
 
             progress = new RecordingProgress<DownloadProgress>();
             result = await workflow.StartAsync(request, progress, CancellationToken.None);
+
+            Assert.True(
+                string.Equals("Completed", result.Status, StringComparison.Ordinal),
+                $"Live Nugs workflow returned {result.Status}: {result.Message}");
+            Assert.Contains("Processed", result.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.NotEmpty(progress.Reports);
+
+            var job = (await jobs.ListAsync(CancellationToken.None)).Single();
+            var fileStates = await states.GetByJobAsync(result.JobId, CancellationToken.None);
+            var account = Assert.Single(await creds.ListAsync(CancellationToken.None));
+
+            Assert.Equal(result.JobId, job.Id);
+            Assert.Equal(DownloadJobStatus.Completed, job.Status);
+            Assert.NotNull(job.CompletedAt);
+            Assert.NotEmpty(fileStates);
+            Assert.All(fileStates, state =>
+            {
+                Assert.Equal(result.JobId, state.JobId);
+                Assert.Equal(FileStatus.Complete, state.Status);
+                Assert.StartsWith(outputRoot, state.FilePath, StringComparison.OrdinalIgnoreCase);
+                Assert.True(File.Exists(state.FilePath), $"Expected downloaded output file {state.FilePath} to exist.");
+                Assert.True(state.ActualSize > 0, $"Expected downloaded output file {state.FilePath} to contain bytes.");
+            });
+
+            Assert.Equal(provider.Id, account.ProviderId);
+            Assert.Equal("Live integration", account.Label);
+            Assert.False(string.IsNullOrWhiteSpace(account.SecretRef));
+            Assert.False(string.IsNullOrWhiteSpace(await vault.GetAsync(account.SecretRef, CancellationToken.None)));
         }
         finally
         {
-            // Kept until after assertions below; cleaned at end of test.
-        }
-
-        Assert.Equal("Completed", result.Status);
-        Assert.Contains("Processed", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.NotEmpty(progress.Reports);
-
-        var job = (await jobs.ListAsync(CancellationToken.None)).Single();
-        var fileStates = await states.GetByJobAsync(result.JobId, CancellationToken.None);
-        var account = Assert.Single(await creds.ListAsync(CancellationToken.None));
-
-        Assert.Equal(result.JobId, job.Id);
-        Assert.Equal(DownloadJobStatus.Completed, job.Status);
-        Assert.NotNull(job.CompletedAt);
-        Assert.NotEmpty(fileStates);
-        Assert.All(fileStates, state =>
-        {
-            Assert.Equal(result.JobId, state.JobId);
-            Assert.Equal(FileStatus.Complete, state.Status);
-            Assert.StartsWith(outputRoot, state.FilePath, StringComparison.OrdinalIgnoreCase);
-            Assert.True(File.Exists(state.FilePath), $"Expected downloaded output file {state.FilePath} to exist.");
-            Assert.True(state.ActualSize > 0, $"Expected downloaded output file {state.FilePath} to contain bytes.");
-        });
-
-        Assert.Equal(provider.Id, account.ProviderId);
-        Assert.Equal("Live integration", account.Label);
-        Assert.False(string.IsNullOrWhiteSpace(account.SecretRef));
-        Assert.False(string.IsNullOrWhiteSpace(await vault.GetAsync(account.SecretRef, CancellationToken.None)));
-
-        if (Directory.Exists(outputRoot))
-        {
-            Directory.Delete(outputRoot, recursive: true);
+            if (Directory.Exists(outputRoot))
+            {
+                Directory.Delete(outputRoot, recursive: true);
+            }
         }
     }
 

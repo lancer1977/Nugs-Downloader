@@ -10,6 +10,51 @@ namespace NugsDownloader.Tests;
 public class WorkflowTests
 {
     [Fact]
+    public async Task DownloadWorkflow_DoesNotOverwriteJobAfterLeaseOwnershipChanges()
+    {
+        var provider = new FakeProvider();
+        var jobs = new MemoryJobRepository();
+        var jobId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await jobs.SaveAsync(new DownloadJob(
+            jobId,
+            "fake",
+            new Uri("https://example.com/album/123"),
+            "Claimed elsewhere",
+            DownloadJobStatus.Running,
+            now,
+            now,
+            null,
+            null,
+            "Downloads",
+            LeaseOwnerId: "worker-b",
+            LeaseAcquiredAt: now,
+            LeaseExpiresAt: now.AddMinutes(5)), CancellationToken.None);
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { provider }),
+            jobs,
+            new MemoryFileStateRepository(),
+            new MemoryCredentialStore(),
+            new MemorySecretVault());
+
+        var result = await workflow.StartAsync(
+            new StartDownloadRequest(
+                jobId,
+                "fake",
+                new Uri("https://example.com/album/123"),
+                new Credentials("user", "pass", null, "label"),
+                new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true),
+                "worker-a"),
+            new Progress<DownloadProgress>(),
+            CancellationToken.None);
+
+        Assert.Equal("LeaseLost", result.Status);
+        var current = await jobs.GetAsync(jobId, CancellationToken.None);
+        Assert.Equal("worker-b", current!.LeaseOwnerId);
+        Assert.Equal(DownloadJobStatus.Running, current.Status);
+    }
+
+    [Fact]
     public async Task DownloadWorkflow_SavesJobFileStateAndCredentials()
     {
         var provider = new FakeProvider();
@@ -174,6 +219,43 @@ public class WorkflowTests
     }
 
     [Fact]
+    public async Task DownloadWorkflow_ResumeReplaysPersistedNugsTokenWithoutPasswordGrant()
+    {
+        var provider = new TokenReplayProvider();
+        var jobs = new MemoryJobRepository();
+        var credentials = new MemoryCredentialStore();
+        var vault = new MemorySecretVault();
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { provider }),
+            jobs,
+            new MemoryFileStateRepository(),
+            credentials,
+            vault);
+        var token = "nugs-token-only-secret";
+
+        var start = await workflow.StartAsync(
+            new StartDownloadRequest(
+                null,
+                provider.Id,
+                new Uri("https://play.nugs.net/release/123"),
+                new Credentials(null, null, token, "Nugs token"),
+                new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true)),
+            new Progress<DownloadProgress>(),
+            CancellationToken.None);
+
+        var account = Assert.Single(credentials.Items);
+        Assert.Equal(CredentialKind.Token, account.CredentialKind);
+        Assert.Equal(token, await vault.GetAsync(account.SecretRef, CancellationToken.None));
+
+        var resumed = await workflow.ResumeAsync(start.JobId, CancellationToken.None);
+
+        Assert.Equal("Completed", resumed.Status);
+        Assert.Equal(token, provider.LastCredentials?.Token);
+        Assert.Null(provider.LastCredentials?.Password);
+        Assert.Equal(0, provider.PasswordGrantAttempts);
+    }
+
+    [Fact]
     public async Task DownloadWorkflow_RetryReplaysStoredCredentialsAndRunsDownload()
     {
         var jobId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
@@ -269,6 +351,41 @@ public class WorkflowTests
         Assert.Equal(DownloadJobStatus.Ready, job!.Status);
         Assert.Null(job.CompletedAt);
         Assert.Null(job.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task DownloadWorkflow_ManualReplayRejectsActiveLeaseWithoutChangingJob()
+    {
+        var jobId = Guid.NewGuid();
+        var jobs = new MemoryJobRepository();
+        var leased = new DownloadJob(
+            jobId,
+            "fake",
+            new Uri("https://example.com/album/123"),
+            "Demo",
+            DownloadJobStatus.Running,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null,
+            null,
+            "Downloads",
+            LeaseOwnerId: "worker-a",
+            LeaseAcquiredAt: DateTimeOffset.UtcNow,
+            LeaseExpiresAt: DateTimeOffset.UtcNow.AddMinutes(5));
+        await jobs.SaveAsync(leased, CancellationToken.None);
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { new FakeProvider() }),
+            jobs,
+            new MemoryFileStateRepository(),
+            new MemoryCredentialStore(),
+            new MemorySecretVault());
+
+        var resume = await workflow.ResumeAsync(jobId, CancellationToken.None);
+        var retry = await workflow.RetryAsync(jobId, CancellationToken.None);
+
+        Assert.Equal("LeaseActive", resume.Status);
+        Assert.Equal("LeaseActive", retry.Status);
+        Assert.Equal(leased, await jobs.GetAsync(jobId, CancellationToken.None));
     }
 
     [Fact]
@@ -514,6 +631,36 @@ public class WorkflowTests
             progress.Report(new DownloadProgress(plan.JobId, plan.ProviderId, 1, 1, 100, 1, 1, "done"));
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class TokenReplayProvider : IMediaProvider
+    {
+        public string Id => "nugs";
+        public string DisplayName => "Nugs";
+        public ProviderCapabilities Capabilities { get; } = new(true, true, true, true, true, true, Array.Empty<string>(), Array.Empty<string>());
+        public Credentials? LastCredentials { get; private set; }
+        public int PasswordGrantAttempts { get; private set; }
+
+        public bool CanHandle(Uri uri) => uri.Host == "play.nugs.net";
+        public Task<AuthResult> AuthenticateAsync(Credentials credentials, CancellationToken ct)
+        {
+            LastCredentials = credentials;
+            if (!string.IsNullOrWhiteSpace(credentials.Password))
+            {
+                PasswordGrantAttempts++;
+                return Task.FromResult(new AuthResult(false, Id, null, DisplayName, null, "Password grant is not allowed."));
+            }
+
+            return Task.FromResult(new AuthResult(!string.IsNullOrWhiteSpace(credentials.Token), Id, null, DisplayName, null, null));
+        }
+
+        public Task<MediaDiscoveryResult> DiscoverAsync(Uri uri, CancellationToken ct) =>
+            Task.FromResult(new MediaDiscoveryResult(Id, uri, uri, "Token Replay", null, Array.Empty<MediaItem>(), false, true, new Dictionary<string, string>()));
+
+        public Task<DownloadPlan> BuildDownloadPlanAsync(MediaDiscoveryResult discovery, DownloadPreferences preferences, CancellationToken ct) =>
+            Task.FromResult(new DownloadPlan(Id, Guid.NewGuid(), discovery.Items, preferences.OutputRoot, preferences, Array.Empty<FileState>(), null));
+
+        public Task ExecuteDownloadAsync(DownloadPlan plan, IProgress<DownloadProgress> progress, CancellationToken ct) => Task.CompletedTask;
     }
 
     private sealed class MemoryJobRepository : IJobRepository

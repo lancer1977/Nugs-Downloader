@@ -96,6 +96,7 @@ public sealed class SqliteStateStore
                 SecretRef TEXT NOT NULL,
                 AuthState INTEGER NOT NULL,
                 LastVerifiedAt TEXT NULL,
+                CredentialKind INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(ProviderId, Label)
             );
 
@@ -107,7 +108,62 @@ public sealed class SqliteStateStore
             );
             """;
         await command.ExecuteNonQueryAsync(ct);
+        await EnsureJobLeaseColumnsAsync(connection, ct);
+        await EnsureColumnAsync(connection, "provider_accounts", "CredentialKind", "INTEGER NOT NULL DEFAULT 0", ct);
         _initialized = true;
+    }
+
+    // Existing installations predate durable worker leases. SQLite has no
+    // ADD COLUMN IF NOT EXISTS, so make this migration idempotent explicitly.
+    private static async Task EnsureJobLeaseColumnsAsync(SqliteConnection connection, CancellationToken ct)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var columns = connection.CreateCommand())
+        {
+            columns.CommandText = "PRAGMA table_info(jobs);";
+            await using var reader = await columns.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                existing.Add(reader.GetString(1));
+            }
+        }
+
+        foreach (var (name, type) in new[]
+        {
+            ("LeaseOwnerId", "TEXT NULL"),
+            ("LeaseAcquiredAt", "TEXT NULL"),
+            ("LeaseExpiresAt", "TEXT NULL"),
+            ("RetryCount", "INTEGER NOT NULL DEFAULT 0"),
+            ("NextAttemptAt", "TEXT NULL")
+        })
+        {
+            if (existing.Contains(name))
+            {
+                continue;
+            }
+
+            await using var alter = connection.CreateCommand();
+            alter.CommandText = $"ALTER TABLE jobs ADD COLUMN {name} {type};";
+            await alter.ExecuteNonQueryAsync(ct);
+        }
+    }
+
+    private static async Task EnsureColumnAsync(SqliteConnection connection, string table, string column, string definition, CancellationToken ct)
+    {
+        await using var columnsCommand = connection.CreateCommand();
+        columnsCommand.CommandText = $"PRAGMA table_info({table});";
+        await using var reader = await columnsCommand.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        await using var alterCommand = connection.CreateCommand();
+        alterCommand.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition};";
+        await alterCommand.ExecuteNonQueryAsync(ct);
     }
 
     private string BuildConnectionString() => new SqliteConnectionStringBuilder

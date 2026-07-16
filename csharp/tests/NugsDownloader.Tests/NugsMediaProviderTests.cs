@@ -422,6 +422,90 @@ public class NugsMediaProviderTests
     }
 
     [Fact]
+    public async Task ExecuteDownloadAsync_ResolvesEntitledFullQualityUrlInsteadOfCatalogClip()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "nugs-provider-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var requests = new List<Uri>();
+            var provider = new NugsMediaProvider(new NugsApiClient(new HttpClient(new FakeHttpHandler(request =>
+            {
+                var url = request.RequestUri?.AbsoluteUri ?? string.Empty;
+                if (url.Contains("connect/token", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { access_token = "test-access-token" }) });
+                }
+
+                if (url.Contains("connect/userinfo", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { sub = "user-789" }) });
+                }
+
+                if (url.Contains("me/subscriptions", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new
+                    {
+                        plan = new { description = "Subscriber", planID = "plan-123" },
+                        promo = new { plan = new { description = "", planID = "" } },
+                        legacySubscriptionID = "subscription-456",
+                        startedAt = "01/02/2026 03:04:05",
+                        endsAt = "12/31/2026 23:59:59",
+                        isContentAccessible = true,
+                        productFormatList = Array.Empty<object>()
+                    }) });
+                }
+
+                if (url.Contains("bigriver/subPlayer.aspx", StringComparison.Ordinal))
+                {
+                    requests.Add(request.RequestUri!);
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { streamLink = "https://assets.example.test/full-quality.flac?sig=test-signature" }) });
+                }
+
+                if (url.Contains("full-quality.flac", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[] { 9, 8, 7 }) });
+                }
+
+                if (url.Contains("catalog-clip", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("Catalog clips must not be downloaded for entitled audio.");
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            }))));
+
+            var auth = await provider.AuthenticateAsync(new NugsDownloader.Domain.ValueObjects.Credentials("user", "password", null, "label"), CancellationToken.None);
+            Assert.True(auth.Success);
+
+            var audioPath = Path.Combine(tempRoot, "full-quality.flac");
+            var plan = new NugsDownloader.Domain.ValueObjects.DownloadPlan(
+                "nugs",
+                Guid.NewGuid(),
+                new[] { new NugsDownloader.Domain.ValueObjects.MediaItem("12345", "Song", "audio", 0, new Dictionary<string, string> { ["clipUrl"] = "https://assets.example.test/catalog-clip.m4a", ["selectedAudioFormat"] = "flac" }) },
+                tempRoot,
+                new NugsDownloader.Domain.ValueObjects.DownloadPreferences("flac", "1080p", false, false, false, tempRoot, false, false),
+                new[] { new NugsDownloader.Domain.Entities.FileState(Guid.NewGuid(), Guid.Empty, audioPath, NugsDownloader.Domain.Entities.FileKind.Audio, NugsDownloader.Domain.Entities.FileStatus.Partial, 0, 0, null, null) },
+                null);
+
+            await provider.ExecuteDownloadAsync(plan, new RecordingProgress<NugsDownloader.Domain.ValueObjects.DownloadProgress>(), CancellationToken.None);
+
+            Assert.Equal(new byte[] { 9, 8, 7 }, await File.ReadAllBytesAsync(audioPath));
+            Assert.Single(requests);
+            Assert.Contains("platformID=-1", requests[0].Query, StringComparison.Ordinal);
+            Assert.Contains("trackId=12345", requests[0].Query, StringComparison.Ordinal);
+            Assert.Contains("HLS=1", requests[0].Query, StringComparison.Ordinal);
+            Assert.False(File.Exists(audioPath + ".partial"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ExecuteDownloadAsync_ThrowsWhenMediaDownloadIsEmptyAndRemovesPartialFile()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "nugs-provider-test-" + Guid.NewGuid().ToString("N"));

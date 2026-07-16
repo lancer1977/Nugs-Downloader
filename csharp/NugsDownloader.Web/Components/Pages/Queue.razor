@@ -1,4 +1,5 @@
 @page "/queue"
+@implements IAsyncDisposable
 @using NugsDownloader.App.Abstractions
 @using NugsDownloader.App.UseCases
 @using NugsDownloader.Domain.Entities
@@ -180,6 +181,8 @@ else
     private IReadOnlyList<DownloadJob> _jobs = Array.Empty<DownloadJob>();
     private IReadOnlyList<IMediaProvider> _providers = Array.Empty<IMediaProvider>();
     private IReadOnlyList<ProviderAccount> _accounts = Array.Empty<ProviderAccount>();
+    private readonly CancellationTokenSource _refreshCancellation = new();
+    private Task? _refreshTask;
 
     protected override async Task OnInitializedAsync()
     {
@@ -189,6 +192,7 @@ else
         _accounts = await CredentialStore.ListAsync(CancellationToken.None);
         _model.StoredAccountId = GetAccounts(_model.ProviderId).FirstOrDefault()?.Id.ToString() ?? string.Empty;
         await ReloadAsync();
+        _refreshTask = RefreshJobsAsync(_refreshCancellation.Token);
     }
 
     private IMediaProvider? _selectedProvider => ProviderCatalog.FindById(_model.ProviderId);
@@ -228,6 +232,35 @@ else
         _jobs = await JobRepository.ListAsync(CancellationToken.None);
     }
 
+    private async Task RefreshJobsAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await ReloadAsync();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _refreshCancellation.CancelAsync();
+        if (_refreshTask is not null)
+        {
+            await _refreshTask;
+        }
+        _refreshCancellation.Dispose();
+    }
+
     private async Task<Credentials?> ResolveCredentialsAsync(CancellationToken ct)
     {
         if (Guid.TryParse(_model.StoredAccountId, out var accountId))
@@ -246,7 +279,11 @@ else
                 return null;
             }
 
-            return new Credentials(account.Username, secret, null, account.Label);
+            return new Credentials(
+                account.Username,
+                account.CredentialKind == CredentialKind.Password ? secret : null,
+                account.CredentialKind == CredentialKind.Token ? secret : null,
+                account.Label);
         }
 
         return new Credentials(_model.Username, _model.Password, _model.Token, _model.Label);

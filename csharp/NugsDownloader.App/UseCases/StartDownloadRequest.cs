@@ -7,4 +7,5 @@ public sealed record StartDownloadRequest(
     string? ProviderId,
     Uri SourceUrl,
     Credentials Credentials,
-    DownloadPreferences Preferences);
+    DownloadPreferences Preferences,
+    string? LeaseOwnerId = null);
