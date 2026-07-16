@@ -112,7 +112,9 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
             }
 
             using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            using var heartbeatCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             _runningJobs[jobId] = linkedCancellation;
+            var heartbeat = RenewLeaseUntilStoppedAsync(jobId, linkedCancellation, heartbeatCancellation.Token);
             try
             {
                 using var scope = _scopeFactory.CreateScope();
@@ -123,7 +125,37 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
             }
             finally
             {
+                await heartbeatCancellation.CancelAsync();
+                try
+                {
+                    await heartbeat;
+                }
+                catch (OperationCanceledException) when (heartbeatCancellation.IsCancellationRequested)
+                {
+                }
                 _runningJobs.TryRemove(jobId, out _);
+            }
+        }
+    }
+
+    private async Task RenewLeaseUntilStoppedAsync(
+        Guid jobId,
+        CancellationTokenSource jobCancellation,
+        CancellationToken ct)
+    {
+        var intervalSeconds = Math.Max(1, _options.LeaseSeconds / 3);
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+        while (await timer.WaitForNextTickAsync(ct))
+        {
+            var renewed = await _jobRepository.RenewLeaseAsync(
+                jobId,
+                _workerId,
+                DateTimeOffset.UtcNow.AddSeconds(_options.LeaseSeconds),
+                ct);
+            if (!renewed)
+            {
+                await jobCancellation.CancelAsync();
+                return;
             }
         }
     }

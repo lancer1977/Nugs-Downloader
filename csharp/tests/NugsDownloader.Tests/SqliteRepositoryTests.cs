@@ -154,4 +154,19 @@ public class SqliteRepositoryTests
         var leased = await first.GetAsync(job.Id, CancellationToken.None);
         Assert.Contains(leased!.LeaseOwnerId, new[] { "worker-a", "worker-b" });
     }
+
+    [Fact]
+    public async Task SqliteJobRepository_RejectsDuplicateAcquisitionBySameWorkerAndRenewsExplicitly()
+    {
+        var stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var jobs = new SqliteJobRepository(new SqliteStateStore(new SqliteStorePaths(Options.Create(new NugsDownloaderStorageOptions { StateDirectory = stateDirectory }))));
+        var job = new DownloadJob(Guid.NewGuid(), "nugs", new Uri("https://example.com/release/1"), "Demo", DownloadJobStatus.Ready, DateTimeOffset.UtcNow, null, null, null, "Downloads");
+        await jobs.SaveAsync(job, CancellationToken.None);
+        var now = DateTimeOffset.UtcNow;
+
+        Assert.True(await jobs.TryAcquireLeaseAsync(job.Id, "worker-a", now, now.AddMinutes(1), CancellationToken.None));
+        Assert.False(await jobs.TryAcquireLeaseAsync(job.Id, "worker-a", now.AddSeconds(1), now.AddMinutes(2), CancellationToken.None));
+        Assert.True(await jobs.RenewLeaseAsync(job.Id, "worker-a", now.AddMinutes(3), CancellationToken.None));
+        Assert.Equal(now.AddMinutes(3), (await jobs.GetAsync(job.Id, CancellationToken.None))!.LeaseExpiresAt);
+    }
 }

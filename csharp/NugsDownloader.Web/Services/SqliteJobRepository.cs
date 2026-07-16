@@ -125,12 +125,34 @@ public sealed class SqliteJobRepository : IJobRepository
                   AND (
                       LeaseExpiresAt IS NULL
                       OR LeaseExpiresAt <= $AcquiredAt
-                      OR LeaseOwnerId = $WorkerId
                   );
                 """;
             AddParameter(command, "$Id", jobId.ToString());
             AddParameter(command, "$WorkerId", workerId);
             AddParameter(command, "$AcquiredAt", SqliteStateStore.Encode(acquiredAt));
+            AddParameter(command, "$ExpiresAt", SqliteStateStore.Encode(expiresAt));
+            AddParameter(command, "$Cancelled", (int)DownloadJobStatus.Cancelled);
+            AddParameter(command, "$Completed", (int)DownloadJobStatus.Completed);
+            return await command.ExecuteNonQueryAsync(ct) == 1;
+        }, ct);
+
+    public Task<bool> RenewLeaseAsync(
+        Guid jobId,
+        string workerId,
+        DateTimeOffset expiresAt,
+        CancellationToken ct) =>
+        _store.ExecuteAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE jobs
+                SET LeaseExpiresAt = $ExpiresAt
+                WHERE Id = $Id
+                  AND LeaseOwnerId = $WorkerId
+                  AND JobStatus NOT IN ($Cancelled, $Completed);
+                """;
+            AddParameter(command, "$Id", jobId.ToString());
+            AddParameter(command, "$WorkerId", workerId);
             AddParameter(command, "$ExpiresAt", SqliteStateStore.Encode(expiresAt));
             AddParameter(command, "$Cancelled", (int)DownloadJobStatus.Cancelled);
             AddParameter(command, "$Completed", (int)DownloadJobStatus.Completed);

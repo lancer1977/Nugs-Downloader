@@ -107,6 +107,31 @@ public sealed class BackgroundDownloadQueueTests
         Assert.Equal(DownloadJobStatus.Running, job.Status);
     }
 
+    [Fact]
+    public async Task Worker_RenewsLeaseWhileDownloadIsActive()
+    {
+        var repository = new MemoryJobs();
+        var jobId = Guid.NewGuid();
+        var workflow = new RecordingWorkflow(repository, jobId, TimeSpan.FromSeconds(3));
+        await using var provider = new ServiceCollection()
+            .AddScoped<IDownloadWorkflow>(_ => workflow)
+            .BuildServiceProvider();
+        var queue = new BackgroundDownloadQueue(provider.GetRequiredService<IServiceScopeFactory>(), repository,
+            Options.Create(new BackgroundDownloadQueueOptions { Capacity = 2, Concurrency = 1, LeaseSeconds = 2, RetryDelaySeconds = 1 }));
+
+        await queue.StartAsync(CancellationToken.None);
+        await queue.EnqueueAsync(Request(jobId), CancellationToken.None);
+        await workflow.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var initialExpiry = (await repository.GetAsync(jobId, CancellationToken.None))!.LeaseExpiresAt;
+        await Task.Delay(TimeSpan.FromMilliseconds(1500));
+        var renewedExpiry = (await repository.GetAsync(jobId, CancellationToken.None))!.LeaseExpiresAt;
+        await workflow.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await queue.StopAsync(CancellationToken.None);
+
+        Assert.NotNull(initialExpiry);
+        Assert.True(renewedExpiry > initialExpiry);
+    }
+
     private static StartDownloadRequest Request(Guid? id = null) => new(id, "nugs", new Uri("https://example.com/release"), new Credentials("user", "secret", null, "main"), new DownloadPreferences(null, null, false, false, false, "Downloads", true, true));
 
     private static DownloadJob Job(Guid id, DownloadJobStatus status, string? owner, DateTimeOffset? leaseExpiry = null) => new(id, "nugs", new Uri("https://example.com/release"), "Demo", status, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, status == DownloadJobStatus.Completed ? DateTimeOffset.UtcNow : null, null, "Downloads", "main", "user", null, owner, DateTimeOffset.UtcNow, leaseExpiry ?? DateTimeOffset.UtcNow.AddMinutes(-1));

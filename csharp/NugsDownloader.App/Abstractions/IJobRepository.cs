@@ -21,8 +21,7 @@ public interface IJobRepository
             return false;
         }
 
-        if (job.LeaseExpiresAt is { } expiry && expiry > acquiredAt &&
-            !string.Equals(job.LeaseOwnerId, workerId, StringComparison.Ordinal))
+        if (job.LeaseExpiresAt is { } expiry && expiry > acquiredAt)
         {
             return false;
         }
@@ -34,6 +33,23 @@ public interface IJobRepository
             LeaseExpiresAt = expiresAt,
             NextAttemptAt = null
         }, ct);
+        return true;
+    }
+
+    async Task<bool> RenewLeaseAsync(
+        Guid jobId,
+        string workerId,
+        DateTimeOffset expiresAt,
+        CancellationToken ct)
+    {
+        var job = await GetAsync(jobId, ct);
+        if (job is null || !string.Equals(job.LeaseOwnerId, workerId, StringComparison.Ordinal) ||
+            job.Status is DownloadJobStatus.Cancelled or DownloadJobStatus.Completed)
+        {
+            return false;
+        }
+
+        await SaveAsync(job with { LeaseExpiresAt = expiresAt }, ct);
         return true;
     }
 }
