@@ -64,7 +64,10 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             existingJob?.LeaseExpiresAt,
             existingJob?.RetryCount ?? 0,
             existingJob?.NextAttemptAt);
-        await _jobRepository.SaveAsync(pendingJob, ct);
+        if (!await SaveJobAsync(pendingJob, request, ct))
+        {
+            return LeaseLost(jobId, provider.Id);
+        }
         var currentJob = pendingJob;
 
         try
@@ -73,12 +76,15 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             if (!auth.Success)
             {
                 var message = DownloadMessageRedactor.Redact(auth.Message ?? "Authentication failed.", request.Credentials);
-                await _jobRepository.SaveAsync(currentJob with
+                if (!await SaveJobAsync(currentJob with
                 {
                     Status = DownloadJobStatus.Failed,
                     CompletedAt = DateTimeOffset.UtcNow,
                     ErrorMessage = message
-                }, CancellationToken.None);
+                }, request, CancellationToken.None))
+                {
+                    return LeaseLost(jobId, provider.Id);
+                }
 
                 return new StartDownloadResult(jobId, provider.Id, "AuthFailed", message);
             }
@@ -105,7 +111,10 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
                 existingJob?.RetryCount ?? 0,
                 existingJob?.NextAttemptAt);
 
-            await _jobRepository.SaveAsync(job, ct);
+            if (!await SaveJobAsync(job, request, ct))
+            {
+                return LeaseLost(jobId, provider.Id);
+            }
             currentJob = job;
 
             var secret = FirstNonEmpty(request.Credentials.Password, request.Credentials.Token, auth.SecretRef);
@@ -155,34 +164,47 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
                 }, ct);
             }
 
-            await _jobRepository.SaveAsync(job with
+            if (!await SaveJobAsync(job with
             {
                 Status = DownloadJobStatus.Completed,
                 CompletedAt = DateTimeOffset.UtcNow
-            }, ct);
+            }, request, ct))
+            {
+                return LeaseLost(jobId, provider.Id);
+            }
 
             return new StartDownloadResult(jobId, provider.Id, "Completed", $"Processed {discovery.Title}");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            await _jobRepository.SaveAsync(currentJob with
+            var saved = await SaveJobAsync(currentJob with
             {
                 Status = DownloadJobStatus.Cancelled,
                 CompletedAt = DateTimeOffset.UtcNow,
                 ErrorMessage = "Download was cancelled."
-            }, CancellationToken.None);
+            }, request, CancellationToken.None);
+
+            if (!saved)
+            {
+                return LeaseLost(jobId, provider.Id);
+            }
 
             return new StartDownloadResult(jobId, provider.Id, "Cancelled", "Download was cancelled.");
         }
         catch (Exception ex)
         {
             var message = DownloadMessageRedactor.Redact(ex.Message, request.Credentials);
-            await _jobRepository.SaveAsync(currentJob with
+            var saved = await SaveJobAsync(currentJob with
             {
                 Status = DownloadJobStatus.Failed,
                 CompletedAt = DateTimeOffset.UtcNow,
                 ErrorMessage = message
-            }, CancellationToken.None);
+            }, request, CancellationToken.None);
+
+            if (!saved)
+            {
+                return LeaseLost(jobId, provider.Id);
+            }
 
             return new StartDownloadResult(jobId, provider.Id, "Failed", message);
         }
@@ -359,4 +381,18 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
         string.IsNullOrWhiteSpace(credentials.Password) && !string.IsNullOrWhiteSpace(credentials.Token)
             ? CredentialKind.Token
             : CredentialKind.Password;
+
+    private async Task<bool> SaveJobAsync(DownloadJob job, StartDownloadRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.LeaseOwnerId))
+        {
+            await _jobRepository.SaveAsync(job, ct);
+            return true;
+        }
+
+        return await _jobRepository.SaveIfLeaseOwnedAsync(job, request.LeaseOwnerId, ct);
+    }
+
+    private static StartDownloadResult LeaseLost(Guid jobId, string providerId) =>
+        new(jobId, providerId, "LeaseLost", "Download stopped because this worker no longer owns the durable job lease.");
 }

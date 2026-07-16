@@ -119,7 +119,14 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
             {
                 using var scope = _scopeFactory.CreateScope();
                 var workflow = scope.ServiceProvider.GetRequiredService<IDownloadWorkflow>();
-                await workflow.StartAsync(request with { JobId = jobId }, new Progress<DownloadProgress>(), linkedCancellation.Token);
+                var result = await workflow.StartAsync(
+                    request with { JobId = jobId, LeaseOwnerId = _workerId },
+                    new Progress<DownloadProgress>(),
+                    linkedCancellation.Token);
+                if (string.Equals(result.Status, "LeaseLost", StringComparison.Ordinal))
+                {
+                    continue;
+                }
                 await ScheduleFailureRetryAsync(jobId, stoppingToken);
                 await ReleaseTerminalLeaseAsync(jobId, stoppingToken);
             }

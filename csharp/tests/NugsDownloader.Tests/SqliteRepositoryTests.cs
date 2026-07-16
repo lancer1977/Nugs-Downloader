@@ -169,4 +169,34 @@ public class SqliteRepositoryTests
         Assert.True(await jobs.RenewLeaseAsync(job.Id, "worker-a", now.AddMinutes(3), CancellationToken.None));
         Assert.Equal(now.AddMinutes(3), (await jobs.GetAsync(job.Id, CancellationToken.None))!.LeaseExpiresAt);
     }
+
+    [Fact]
+    public async Task SqliteJobRepository_RejectsLeaseAcquisitionBeforeRetryBackoffExpires()
+    {
+        var stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var jobs = new SqliteJobRepository(new SqliteStateStore(new SqliteStorePaths(Options.Create(new NugsDownloaderStorageOptions { StateDirectory = stateDirectory }))));
+        var now = DateTimeOffset.UtcNow;
+        var job = new DownloadJob(Guid.NewGuid(), "nugs", new Uri("https://example.com/release/1"), "Demo", DownloadJobStatus.Ready, now, null, null, null, "Downloads", NextAttemptAt: now.AddMinutes(5));
+        await jobs.SaveAsync(job, CancellationToken.None);
+
+        Assert.False(await jobs.TryAcquireLeaseAsync(job.Id, "worker-a", now, now.AddMinutes(1), CancellationToken.None));
+        Assert.True(await jobs.TryAcquireLeaseAsync(job.Id, "worker-a", now.AddMinutes(6), now.AddMinutes(7), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SqliteJobRepository_FencesWritesFromWorkerThatLostLease()
+    {
+        var stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var jobs = new SqliteJobRepository(new SqliteStateStore(new SqliteStorePaths(Options.Create(new NugsDownloaderStorageOptions { StateDirectory = stateDirectory }))));
+        var now = DateTimeOffset.UtcNow;
+        var job = new DownloadJob(Guid.NewGuid(), "nugs", new Uri("https://example.com/release/1"), "Demo", DownloadJobStatus.Running, now, now, null, null, "Downloads", LeaseOwnerId: "worker-b", LeaseAcquiredAt: now, LeaseExpiresAt: now.AddMinutes(5));
+        await jobs.SaveAsync(job, CancellationToken.None);
+
+        var saved = await jobs.SaveIfLeaseOwnedAsync(job with { Status = DownloadJobStatus.Cancelled }, "worker-a", CancellationToken.None);
+
+        Assert.False(saved);
+        var current = await jobs.GetAsync(job.Id, CancellationToken.None);
+        Assert.Equal("worker-b", current!.LeaseOwnerId);
+        Assert.Equal(DownloadJobStatus.Running, current.Status);
+    }
 }

@@ -105,6 +105,34 @@ public sealed class SqliteJobRepository : IJobRepository
             await command.ExecuteNonQueryAsync(ct);
         }, ct);
 
+    public Task<bool> SaveIfLeaseOwnedAsync(DownloadJob job, string workerId, CancellationToken ct) =>
+        _store.ExecuteAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE jobs
+                SET ProviderId = $ProviderId,
+                    SourceUrl = $SourceUrl,
+                    DisplayName = $DisplayName,
+                    JobStatus = $JobStatus,
+                    RequestedAt = $RequestedAt,
+                    StartedAt = $StartedAt,
+                    CompletedAt = $CompletedAt,
+                    ErrorMessage = $ErrorMessage,
+                    OutputPath = $OutputPath,
+                    CredentialLabel = $CredentialLabel,
+                    CredentialUsername = $CredentialUsername,
+                    PreferencesJson = $PreferencesJson,
+                    RetryCount = $RetryCount,
+                    NextAttemptAt = $NextAttemptAt
+                WHERE Id = $Id
+                  AND LeaseOwnerId = $WorkerId;
+                """;
+            AddJobParameters(command, job);
+            AddParameter(command, "$WorkerId", workerId);
+            return await command.ExecuteNonQueryAsync(ct) == 1;
+        }, ct);
+
     public Task<bool> TryAcquireLeaseAsync(
         Guid jobId,
         string workerId,
@@ -122,6 +150,7 @@ public sealed class SqliteJobRepository : IJobRepository
                     NextAttemptAt = NULL
                 WHERE Id = $Id
                   AND JobStatus NOT IN ($Cancelled, $Completed)
+                  AND (NextAttemptAt IS NULL OR NextAttemptAt <= $AcquiredAt)
                   AND (
                       LeaseExpiresAt IS NULL
                       OR LeaseExpiresAt <= $AcquiredAt
@@ -178,6 +207,25 @@ public sealed class SqliteJobRepository : IJobRepository
         reader.IsDBNull(15) ? null : SqliteStateStore.DecodeDateTimeOffset(reader.GetString(15)),
         reader.GetInt32(16),
         reader.IsDBNull(17) ? null : SqliteStateStore.DecodeDateTimeOffset(reader.GetString(17)));
+
+    private static void AddJobParameters(SqliteCommand command, DownloadJob job)
+    {
+        AddParameter(command, "$Id", job.Id.ToString());
+        AddParameter(command, "$ProviderId", job.ProviderId);
+        AddParameter(command, "$SourceUrl", job.SourceUrl.ToString());
+        AddParameter(command, "$DisplayName", job.DisplayName);
+        AddParameter(command, "$JobStatus", (int)job.Status);
+        AddParameter(command, "$RequestedAt", SqliteStateStore.Encode(job.RequestedAt));
+        AddParameter(command, "$StartedAt", SqliteStateStore.Encode(job.StartedAt));
+        AddParameter(command, "$CompletedAt", SqliteStateStore.Encode(job.CompletedAt));
+        AddParameter(command, "$ErrorMessage", job.ErrorMessage);
+        AddParameter(command, "$OutputPath", job.OutputPath);
+        AddParameter(command, "$CredentialLabel", job.CredentialLabel);
+        AddParameter(command, "$CredentialUsername", job.CredentialUsername);
+        AddParameter(command, "$PreferencesJson", job.Preferences is null ? null : JsonSerializer.Serialize(job.Preferences, JsonOptions));
+        AddParameter(command, "$RetryCount", job.RetryCount);
+        AddParameter(command, "$NextAttemptAt", SqliteStateStore.Encode(job.NextAttemptAt));
+    }
 
     private static void AddParameter(SqliteCommand command, string name, object? value)
     {

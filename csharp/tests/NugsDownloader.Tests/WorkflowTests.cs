@@ -10,6 +10,51 @@ namespace NugsDownloader.Tests;
 public class WorkflowTests
 {
     [Fact]
+    public async Task DownloadWorkflow_DoesNotOverwriteJobAfterLeaseOwnershipChanges()
+    {
+        var provider = new FakeProvider();
+        var jobs = new MemoryJobRepository();
+        var jobId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await jobs.SaveAsync(new DownloadJob(
+            jobId,
+            "fake",
+            new Uri("https://example.com/album/123"),
+            "Claimed elsewhere",
+            DownloadJobStatus.Running,
+            now,
+            now,
+            null,
+            null,
+            "Downloads",
+            LeaseOwnerId: "worker-b",
+            LeaseAcquiredAt: now,
+            LeaseExpiresAt: now.AddMinutes(5)), CancellationToken.None);
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { provider }),
+            jobs,
+            new MemoryFileStateRepository(),
+            new MemoryCredentialStore(),
+            new MemorySecretVault());
+
+        var result = await workflow.StartAsync(
+            new StartDownloadRequest(
+                jobId,
+                "fake",
+                new Uri("https://example.com/album/123"),
+                new Credentials("user", "pass", null, "label"),
+                new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true),
+                "worker-a"),
+            new Progress<DownloadProgress>(),
+            CancellationToken.None);
+
+        Assert.Equal("LeaseLost", result.Status);
+        var current = await jobs.GetAsync(jobId, CancellationToken.None);
+        Assert.Equal("worker-b", current!.LeaseOwnerId);
+        Assert.Equal(DownloadJobStatus.Running, current.Status);
+    }
+
+    [Fact]
     public async Task DownloadWorkflow_SavesJobFileStateAndCredentials()
     {
         var provider = new FakeProvider();

@@ -8,6 +8,23 @@ public interface IJobRepository
     Task<IReadOnlyList<DownloadJob>> ListAsync(CancellationToken ct);
     Task SaveAsync(DownloadJob job, CancellationToken ct);
 
+    async Task<bool> SaveIfLeaseOwnedAsync(DownloadJob job, string workerId, CancellationToken ct)
+    {
+        var current = await GetAsync(job.Id, ct);
+        if (current is null || !string.Equals(current.LeaseOwnerId, workerId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        await SaveAsync(job with
+        {
+            LeaseOwnerId = workerId,
+            LeaseAcquiredAt = current.LeaseAcquiredAt,
+            LeaseExpiresAt = current.LeaseExpiresAt
+        }, ct);
+        return true;
+    }
+
     async Task<bool> TryAcquireLeaseAsync(
         Guid jobId,
         string workerId,
@@ -22,6 +39,11 @@ public interface IJobRepository
         }
 
         if (job.LeaseExpiresAt is { } expiry && expiry > acquiredAt)
+        {
+            return false;
+        }
+
+        if (job.NextAttemptAt is { } nextAttempt && nextAttempt > acquiredAt)
         {
             return false;
         }
