@@ -60,6 +60,31 @@ public sealed class BackgroundDownloadQueueTests
     }
 
     [Fact]
+    public async Task Scanner_DoesNotRecoverPendingJobStillWaitingInLiveQueue()
+    {
+        var repository = new MemoryJobs();
+        var workflow = new RecordingWorkflow(repository, null, TimeSpan.FromSeconds(3));
+        await using var provider = new ServiceCollection()
+            .AddScoped<IDownloadWorkflow>(_ => workflow)
+            .BuildServiceProvider();
+        var queue = new BackgroundDownloadQueue(provider.GetRequiredService<IServiceScopeFactory>(), repository,
+            Options.Create(new BackgroundDownloadQueueOptions { Capacity = 2, Concurrency = 1, LeaseSeconds = 60, RetryDelaySeconds = 1 }));
+        var firstId = Guid.NewGuid();
+        var waitingId = Guid.NewGuid();
+
+        await queue.StartAsync(CancellationToken.None);
+        await queue.EnqueueAsync(Request(firstId), CancellationToken.None);
+        await workflow.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await queue.EnqueueAsync(Request(waitingId), CancellationToken.None);
+        await Task.Delay(TimeSpan.FromMilliseconds(1500));
+
+        var waiting = await repository.GetAsync(waitingId, CancellationToken.None);
+        Assert.Equal(DownloadJobStatus.Pending, waiting?.Status);
+        Assert.Equal(1, workflow.StartCount);
+        await queue.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Startup_ReplaysMoreDueJobsThanChannelCapacityWithoutDeadlocking()
     {
         var repository = new MemoryJobs();

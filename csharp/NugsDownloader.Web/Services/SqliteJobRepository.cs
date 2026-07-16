@@ -149,7 +149,7 @@ public sealed class SqliteJobRepository : IJobRepository
                     LeaseExpiresAt = $ExpiresAt,
                     NextAttemptAt = NULL
                 WHERE Id = $Id
-                  AND JobStatus NOT IN ($Cancelled, $Completed)
+                  AND JobStatus IN ($Pending, $Ready)
                   AND (NextAttemptAt IS NULL OR NextAttemptAt <= $AcquiredAt)
                   AND (
                       LeaseExpiresAt IS NULL
@@ -160,8 +160,8 @@ public sealed class SqliteJobRepository : IJobRepository
             AddParameter(command, "$WorkerId", workerId);
             AddParameter(command, "$AcquiredAt", SqliteStateStore.Encode(acquiredAt));
             AddParameter(command, "$ExpiresAt", SqliteStateStore.Encode(expiresAt));
-            AddParameter(command, "$Cancelled", (int)DownloadJobStatus.Cancelled);
-            AddParameter(command, "$Completed", (int)DownloadJobStatus.Completed);
+            AddParameter(command, "$Pending", (int)DownloadJobStatus.Pending);
+            AddParameter(command, "$Ready", (int)DownloadJobStatus.Ready);
             return await command.ExecuteNonQueryAsync(ct) == 1;
         }, ct);
 

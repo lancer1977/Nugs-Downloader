@@ -54,7 +54,7 @@ public interface IJobRepository
         CancellationToken ct)
     {
         var job = await GetAsync(jobId, ct);
-        if (job is null || job.Status is DownloadJobStatus.Cancelled or DownloadJobStatus.Completed)
+        if (job is null || job.Status is not (DownloadJobStatus.Pending or DownloadJobStatus.Ready))
         {
             return false;
         }

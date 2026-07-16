@@ -15,6 +15,7 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
 {
     private readonly Channel<StartDownloadRequest> _queue;
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _runningJobs = new();
+    private readonly ConcurrentDictionary<Guid, byte> _livePendingJobs = new();
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IJobRepository _jobRepository;
     private readonly BackgroundDownloadQueueOptions _options;
@@ -41,22 +42,31 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
         var jobId = request.JobId ?? Guid.NewGuid();
         var queuedRequest = request with { JobId = jobId };
         var now = DateTimeOffset.UtcNow;
-        await _jobRepository.SaveAsync(new DownloadJob(
-            jobId,
-            request.ProviderId ?? string.Empty,
-            request.SourceUrl,
-            request.SourceUrl.ToString(),
-            DownloadJobStatus.Pending,
-            now,
-            null,
-            null,
-            null,
-            request.Preferences.OutputRoot,
-            request.Credentials.Label,
-            request.Credentials.Username,
-            request.Preferences), ct);
+        _livePendingJobs.TryAdd(jobId, 0);
+        try
+        {
+            await _jobRepository.SaveAsync(new DownloadJob(
+                jobId,
+                request.ProviderId ?? string.Empty,
+                request.SourceUrl,
+                request.SourceUrl.ToString(),
+                DownloadJobStatus.Pending,
+                now,
+                null,
+                null,
+                null,
+                request.Preferences.OutputRoot,
+                request.Credentials.Label,
+                request.Credentials.Username,
+                request.Preferences), ct);
 
-        await _queue.Writer.WriteAsync(queuedRequest, ct);
+            await _queue.Writer.WriteAsync(queuedRequest, ct);
+        }
+        catch
+        {
+            _livePendingJobs.TryRemove(jobId, out _);
+            throw;
+        }
         return new StartDownloadResult(jobId, request.ProviderId ?? string.Empty, "Queued", "Download queued for background processing.");
     }
 
@@ -131,7 +141,7 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
             .Select(_ => RunWorkerAsync(stoppingToken))
             .ToArray();
 
-        await RecoverLeasesAndScheduleReadyJobsAsync(stoppingToken);
+        await RecoverLeasesAndScheduleReadyJobsAsync(recoverPendingJobs: true, stoppingToken);
         var retryScanner = ScanForDueRetriesAsync(stoppingToken);
 
         await Task.WhenAll(workers.Append(retryScanner));
@@ -142,7 +152,15 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
         await foreach (var request in _queue.Reader.ReadAllAsync(stoppingToken))
         {
             var jobId = request.JobId ?? Guid.NewGuid();
-            var leased = await TryAcquireLeaseAsync(jobId, stoppingToken);
+            bool leased;
+            try
+            {
+                leased = await TryAcquireLeaseAsync(jobId, stoppingToken);
+            }
+            finally
+            {
+                _livePendingJobs.TryRemove(jobId, out _);
+            }
             if (!leased)
             {
                 continue;
@@ -204,12 +222,13 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
         }
     }
 
-    private async Task RecoverLeasesAndScheduleReadyJobsAsync(CancellationToken ct)
+    private async Task RecoverLeasesAndScheduleReadyJobsAsync(bool recoverPendingJobs, CancellationToken ct)
     {
         var jobs = await _jobRepository.ListAsync(ct);
         var now = DateTimeOffset.UtcNow;
         foreach (var job in jobs.Where(job =>
-                     (job.Status is DownloadJobStatus.Pending or DownloadJobStatus.Discovering or DownloadJobStatus.Running ||
+                     (recoverPendingJobs && job.Status == DownloadJobStatus.Pending && !_livePendingJobs.ContainsKey(job.Id) ||
+                      job.Status is DownloadJobStatus.Discovering or DownloadJobStatus.Running ||
                       job.Status == DownloadJobStatus.Ready && job.LeaseOwnerId is not null) &&
                      (job.LeaseExpiresAt is null || job.LeaseExpiresAt <= now)))
         {
@@ -233,7 +252,7 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1, _options.RetryDelaySeconds)));
         while (await timer.WaitForNextTickAsync(ct))
         {
-            await RecoverLeasesAndScheduleReadyJobsAsync(ct);
+            await RecoverLeasesAndScheduleReadyJobsAsync(recoverPendingJobs: false, ct);
         }
     }
 
