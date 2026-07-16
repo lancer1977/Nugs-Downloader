@@ -10,6 +10,7 @@ public sealed class NugsApiClient
 {
     private const string DefaultAuthUrl = "https://id.nugs.net/connect/token";
     private const string DefaultUserInfoUrl = "https://id.nugs.net/connect/userinfo";
+    private const string DefaultStashInfoUrl = "https://stash.nugs.net/api/v1/stash";
     private const string DefaultSubInfoUrl = "https://subscriptions.nugs.net/api/v1/me/subscriptions";
     private const string DefaultStreamApiBase = "https://streamapi.nugs.net/";
     private const string ClientId = "Eg7HuH873H65r5rt325UytR5429";
@@ -22,7 +23,10 @@ public sealed class NugsApiClient
     };
     private static readonly string[] StreamUrlFieldNames = ["streamLink", "streamUrl", "streamURL", "url", "mediaUrl", "downloadUrl"];
     private static readonly string[] StreamUrlContainerFieldNames = ["data", "response", "result"];
-    private static readonly int[] AudioPlatformProbeOrder = [1, 4, 7, 10];
+    // The current web player negotiates its stream with platform -1 and HLS
+    // enabled. Retain known legacy lossless platform fallbacks for accounts or
+    // catalog entries that do not answer the web-player request.
+    private static readonly int[] AudioPlatformProbeOrder = [-1, 8, 5, 2, 9];
 
     private readonly HttpClient _http;
 
@@ -92,6 +96,21 @@ public sealed class NugsApiClient
         }
 
         return await JsonSerializer.DeserializeAsync<SubInfo>(await response.Content.ReadAsStreamAsync(ct), JsonOptions, ct);
+    }
+
+    public async Task<StashInfo?> GetStashInfoAsync(string token, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, DefaultStashInfoUrl);
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + token);
+        request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+
+        using var response = await _http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        return await JsonSerializer.DeserializeAsync<StashInfo>(await response.Content.ReadAsStreamAsync(ct), JsonOptions, ct);
     }
 
     public async Task<AlbumMeta?> GetAlbumMetaAsync(string albumId, CancellationToken ct)
@@ -216,8 +235,11 @@ public sealed class NugsApiClient
                     Query = string.Join("&", new[]
                     {
                         "platformID=" + platformId.ToString(CultureInfo.InvariantCulture),
-                        "trackID=" + Uri.EscapeDataString(trackId),
+                        "trackId=" + Uri.EscapeDataString(trackId),
                         "app=1",
+                        "HLS=1",
+                        "orgn=websdk",
+                        "method=subPlayer",
                         "subscriptionID=" + Uri.EscapeDataString(subscription.LegacySubscriptionID),
                         "subCostplanIDAccessList=" + Uri.EscapeDataString(planId),
                         "nn_userID=" + Uri.EscapeDataString(userId),
@@ -260,8 +282,9 @@ public sealed class NugsApiClient
 
     private static string ToUnixTimestamp(string value)
     {
-        if (!DateTimeOffset.TryParseExact(value, "MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var timestamp)
-            && !DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal, out timestamp))
+        const DateTimeStyles utcStyles = DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal;
+        if (!DateTimeOffset.TryParseExact(value, "MM/dd/yyyy HH:mm:ss", CultureInfo.InvariantCulture, utcStyles, out var timestamp)
+            && !DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, utcStyles, out timestamp))
         {
             throw new FormatException("Nugs subscription timestamp was invalid.");
         }
@@ -354,6 +377,7 @@ public sealed class NugsApiClient
 
     public sealed record AuthResponse([property: JsonPropertyName("access_token")] string AccessToken);
     public sealed record UserInfo(string Sub);
+    public sealed record StashInfo(string UserId);
     public sealed record SubInfo(Plan Plan, Promo Promo, string LegacySubscriptionID, string StartedAt, string EndsAt, bool IsContentAccessible, List<ProductFormatList> ProductFormatList);
     public sealed record Plan(string Description, string PlanID);
     public sealed record Promo(Plan Plan);

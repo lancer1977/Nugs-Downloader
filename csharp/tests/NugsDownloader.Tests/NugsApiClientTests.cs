@@ -52,6 +52,22 @@ public class NugsApiClientTests
     }
 
     [Fact]
+    public async Task GetStashInfoAsync_ReturnsLegacyStreamingUserId()
+    {
+        using var handler = new FakeHttpHandler(request =>
+        {
+            Assert.Contains("stash.nugs.net/api/v1/stash", request.RequestUri?.AbsoluteUri ?? string.Empty, StringComparison.Ordinal);
+            Assert.Equal("Bearer test-access-token", request.Headers.Authorization?.ToString());
+            return Task.FromResult(JsonResponse(new { userId = "legacy-user-789" }));
+        });
+        var client = new NugsApiClient(new HttpClient(handler));
+
+        var result = await client.GetStashInfoAsync("test-access-token", CancellationToken.None);
+
+        Assert.Equal("legacy-user-789", result?.UserId);
+    }
+
+    [Fact]
     public async Task ResolveFullQualityAudioUrlAsync_UsesDocumentedAudioRequestParameters()
     {
         Uri? requestUri = null;
@@ -86,12 +102,17 @@ public class NugsApiClientTests
 
         Assert.Equal("https://media.example.test/full-quality.flac?sig=test-signature", result.AbsoluteUri);
         Assert.NotNull(requestUri);
-        Assert.Equal("1", QueryValue(requestUri!, "platformID"));
-        Assert.Equal("12345", QueryValue(requestUri!, "trackID"));
+        Assert.Equal("-1", QueryValue(requestUri!, "platformID"));
+        Assert.Equal("12345", QueryValue(requestUri!, "trackId"));
         Assert.Equal("subscription-456", QueryValue(requestUri!, "subscriptionID"));
         Assert.Equal("plan-123", QueryValue(requestUri!, "subCostplanIDAccessList"));
         Assert.Equal("user-789", QueryValue(requestUri!, "nn_userID"));
+        Assert.Equal("1767323045", QueryValue(requestUri!, "startDateStamp"));
+        Assert.Equal("1798761599", QueryValue(requestUri!, "endDateStamp"));
         Assert.Equal("1", QueryValue(requestUri!, "app"));
+        Assert.Equal("1", QueryValue(requestUri!, "HLS"));
+        Assert.Equal("websdk", QueryValue(requestUri!, "orgn"));
+        Assert.Equal("subPlayer", QueryValue(requestUri!, "method"));
         Assert.Null(QueryValue(requestUri!, "skuId"));
         Assert.Null(QueryValue(requestUri!, "containerID"));
         Assert.Null(QueryValue(requestUri!, "chap"));
@@ -122,7 +143,7 @@ public class NugsApiClientTests
             {
                 requestUris.Add(request.RequestUri!);
                 var platformId = QueryValue(request.RequestUri!, "platformID");
-                string? streamLink = platformId == "1" ? null : "https://media.example.test/full-quality.flac";
+                string? streamLink = platformId == "-1" ? null : "https://media.example.test/full-quality.flac";
                 return Task.FromResult(JsonResponse(new { streamLink }));
             }
 
@@ -137,13 +158,13 @@ public class NugsApiClientTests
             requestUris,
             first =>
             {
-                Assert.Equal("1", QueryValue(first, "platformID"));
-                Assert.Equal("12345", QueryValue(first, "trackID"));
+                Assert.Equal("-1", QueryValue(first, "platformID"));
+                Assert.Equal("12345", QueryValue(first, "trackId"));
             },
             second =>
             {
-                Assert.Equal("4", QueryValue(second, "platformID"));
-                Assert.Equal("12345", QueryValue(second, "trackID"));
+                Assert.Equal("8", QueryValue(second, "platformID"));
+                Assert.Equal("12345", QueryValue(second, "trackId"));
             });
     }
 
@@ -226,10 +247,11 @@ public class NugsApiClientTests
         Assert.DoesNotContain(tokenLikeValue, exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("https://media.example.test/secret", exception.Message, StringComparison.Ordinal);
         const string expectedResponseShapes = "Response shapes: "
-            + "platformID 1: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}; "
-            + "platformID 4: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}; "
-            + "platformID 7: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}; "
-            + "platformID 10: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}.";
+            + "platformID -1: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}; "
+            + "platformID 8: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}; "
+            + "platformID 5: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}; "
+            + "platformID 2: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}; "
+            + "platformID 9: object{streamLink:null, token:string, nested:object, attempts:number, entitled:bool, missing:null, items:array}.";
         Assert.Contains(expectedResponseShapes, exception.Message, StringComparison.Ordinal);
     }
 

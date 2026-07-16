@@ -37,7 +37,7 @@ dotnet test csharp/NugsDownloader.sln
 
 ### Live media smoke
 
-The live smoke uses `/home/lancer1977/.config/secrets/nugs-downloader.env` by default and must never print credentials or tokens. It writes to a temporary output root, verifies at least one Nugs media file contains bytes, then cleans the temp directory.
+The live smoke uses `/home/lancer1977/.config/secrets/nugs-downloader.env` by default and must never print credentials or tokens. It writes to a temporary output root, verifies at least one Nugs media file contains bytes, then cleans the temp directory even when an assertion fails. Set `NUGS_LIVE_DOWNLOAD_URL` to override the small representative release when entitlement coverage changes.
 
 ```bash
 NUGS_LIVE_TESTS=1 dotnet test csharp/NugsDownloader.sln --filter LiveNugsWorkflowTests

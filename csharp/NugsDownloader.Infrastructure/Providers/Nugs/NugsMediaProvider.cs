@@ -65,8 +65,11 @@ public sealed class NugsMediaProvider : INugsProvider
         }
 
         var userInfo = await _apiClient.GetUserInfoAsync(token, ct);
+        var stashInfo = await _apiClient.GetStashInfoAsync(token, ct);
         _accessToken = token;
-        _authenticatedUserId = userInfo?.Sub;
+        _authenticatedUserId = !string.IsNullOrWhiteSpace(stashInfo?.UserId)
+            ? stashInfo.UserId
+            : userInfo?.Sub;
         return new AuthResult(
             Success: true,
             ProviderId: Id,

@@ -491,8 +491,9 @@ public class NugsMediaProviderTests
 
             Assert.Equal(new byte[] { 9, 8, 7 }, await File.ReadAllBytesAsync(audioPath));
             Assert.Single(requests);
-            Assert.Contains("platformID=1", requests[0].Query, StringComparison.Ordinal);
-            Assert.Contains("trackID=12345", requests[0].Query, StringComparison.Ordinal);
+            Assert.Contains("platformID=-1", requests[0].Query, StringComparison.Ordinal);
+            Assert.Contains("trackId=12345", requests[0].Query, StringComparison.Ordinal);
+            Assert.Contains("HLS=1", requests[0].Query, StringComparison.Ordinal);
             Assert.False(File.Exists(audioPath + ".partial"));
         }
         finally
