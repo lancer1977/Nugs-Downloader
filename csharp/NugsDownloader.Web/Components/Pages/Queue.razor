@@ -279,7 +279,11 @@ else
                 return null;
             }
 
-            return new Credentials(account.Username, secret, null, account.Label);
+            return new Credentials(
+                account.Username,
+                account.CredentialKind == CredentialKind.Password ? secret : null,
+                account.CredentialKind == CredentialKind.Token ? secret : null,
+                account.Label);
         }
 
         return new Credentials(_model.Username, _model.Password, _model.Token, _model.Label);

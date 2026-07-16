@@ -88,6 +88,43 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
         return new StartDownloadResult(jobId, job.ProviderId, "NotCancellable", $"Job in {job.Status} state cannot be cancelled.");
     }
 
+    public Task<StartDownloadResult> ResumeAsync(Guid jobId, CancellationToken ct) =>
+        EnqueueReplayAsync(jobId, "ResumeQueued", "Resume queued for lease-protected background processing.", ct);
+
+    public Task<StartDownloadResult> RetryAsync(Guid jobId, CancellationToken ct) =>
+        EnqueueReplayAsync(jobId, "RetryQueued", "Retry queued for lease-protected background processing.", ct);
+
+    private async Task<StartDownloadResult> EnqueueReplayAsync(
+        Guid jobId,
+        string queuedStatus,
+        string queuedMessage,
+        CancellationToken ct)
+    {
+        var job = await _jobRepository.GetAsync(jobId, ct);
+        if (job is null)
+        {
+            return new StartDownloadResult(jobId, string.Empty, "NotFound", "Job not found.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (job.LeaseOwnerId is not null && (job.LeaseExpiresAt is null || job.LeaseExpiresAt > now))
+        {
+            return new StartDownloadResult(jobId, job.ProviderId, "LeaseActive", "The job is already owned by an active worker.");
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var workflow = scope.ServiceProvider.GetRequiredService<IDownloadWorkflow>();
+        var replay = await workflow.BuildReplayRequestAsync(jobId, ct);
+        if (replay is null)
+        {
+            await MarkReplayCredentialsUnavailableAsync(job, ct);
+            return new StartDownloadResult(jobId, job.ProviderId, "NeedsAuthentication", "Stored credentials are unavailable. Re-authenticate before retrying this job.");
+        }
+
+        await _queue.Writer.WriteAsync(replay with { JobId = jobId }, ct);
+        return new StartDownloadResult(jobId, job.ProviderId, queuedStatus, queuedMessage);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var workers = Enumerable.Range(0, _options.Concurrency)
@@ -211,11 +248,26 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
             var replay = await workflow.BuildReplayRequestAsync(job.Id, ct);
             if (replay is null)
             {
+                await MarkReplayCredentialsUnavailableAsync(job, ct);
                 continue;
             }
 
             await _queue.Writer.WriteAsync(replay with { JobId = job.Id }, ct);
         }
+    }
+
+    private async Task MarkReplayCredentialsUnavailableAsync(DownloadJob job, CancellationToken ct)
+    {
+        await _jobRepository.SaveAsync(job with
+        {
+            Status = DownloadJobStatus.Failed,
+            CompletedAt = DateTimeOffset.UtcNow,
+            ErrorMessage = "Stored credentials are unavailable. Re-authenticate before retrying this job.",
+            LeaseOwnerId = null,
+            LeaseAcquiredAt = null,
+            LeaseExpiresAt = null,
+            NextAttemptAt = null
+        }, ct);
     }
 
     private async Task<bool> TryAcquireLeaseAsync(Guid jobId, CancellationToken ct)

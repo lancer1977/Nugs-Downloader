@@ -354,6 +354,41 @@ public class WorkflowTests
     }
 
     [Fact]
+    public async Task DownloadWorkflow_ManualReplayRejectsActiveLeaseWithoutChangingJob()
+    {
+        var jobId = Guid.NewGuid();
+        var jobs = new MemoryJobRepository();
+        var leased = new DownloadJob(
+            jobId,
+            "fake",
+            new Uri("https://example.com/album/123"),
+            "Demo",
+            DownloadJobStatus.Running,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null,
+            null,
+            "Downloads",
+            LeaseOwnerId: "worker-a",
+            LeaseAcquiredAt: DateTimeOffset.UtcNow,
+            LeaseExpiresAt: DateTimeOffset.UtcNow.AddMinutes(5));
+        await jobs.SaveAsync(leased, CancellationToken.None);
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { new FakeProvider() }),
+            jobs,
+            new MemoryFileStateRepository(),
+            new MemoryCredentialStore(),
+            new MemorySecretVault());
+
+        var resume = await workflow.ResumeAsync(jobId, CancellationToken.None);
+        var retry = await workflow.RetryAsync(jobId, CancellationToken.None);
+
+        Assert.Equal("LeaseActive", resume.Status);
+        Assert.Equal("LeaseActive", retry.Status);
+        Assert.Equal(leased, await jobs.GetAsync(jobId, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task DownloadWorkflow_MarksJobFailedWhenProviderExecutionFails()
     {
         var jobs = new MemoryJobRepository();

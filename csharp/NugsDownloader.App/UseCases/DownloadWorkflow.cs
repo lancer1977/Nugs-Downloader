@@ -218,6 +218,11 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
             return new StartDownloadResult(jobId, string.Empty, "NotFound", "Job not found.");
         }
 
+        if (HasActiveLease(job))
+        {
+            return ActiveLease(job);
+        }
+
         var replayRequest = await BuildReplayRequestAsync(job, ct);
         if (replayRequest is not null)
         {
@@ -265,6 +270,11 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
         if (job is null)
         {
             return new StartDownloadResult(jobId, string.Empty, "NotFound", "Job not found.");
+        }
+
+        if (HasActiveLease(job))
+        {
+            return ActiveLease(job);
         }
 
         var replayRequest = await BuildReplayRequestAsync(job, ct);
@@ -381,6 +391,12 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
         string.IsNullOrWhiteSpace(credentials.Password) && !string.IsNullOrWhiteSpace(credentials.Token)
             ? CredentialKind.Token
             : CredentialKind.Password;
+
+    private static bool HasActiveLease(DownloadJob job) =>
+        job.LeaseOwnerId is not null && (job.LeaseExpiresAt is null || job.LeaseExpiresAt > DateTimeOffset.UtcNow);
+
+    private static StartDownloadResult ActiveLease(DownloadJob job) =>
+        new(job.Id, job.ProviderId, "LeaseActive", "The job is already owned by an active worker.");
 
     private async Task<bool> SaveJobAsync(DownloadJob job, StartDownloadRequest request, CancellationToken ct)
     {

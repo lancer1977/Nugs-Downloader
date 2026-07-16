@@ -4,7 +4,6 @@
 @using NugsDownloader.App.UseCases
 @using NugsDownloader.Domain.Entities
 @using NugsDownloader.Web.Services
-@inject IDownloadWorkflow DownloadWorkflow
 @inject IBackgroundDownloadQueue DownloadQueue
 @inject IJobRepository JobRepository
 @inject IFileStateRepository FileStateRepository
@@ -74,14 +73,14 @@ else
 
     private async Task ResumeAsync()
     {
-        var result = await DownloadWorkflow.ResumeAsync(JobId, CancellationToken.None);
+        var result = await DownloadQueue.ResumeAsync(JobId, CancellationToken.None);
         _message = $"{result.Status}: {result.Message}";
         await OnParametersSetAsync();
     }
 
     private async Task RetryAsync()
     {
-        var result = await DownloadWorkflow.RetryAsync(JobId, CancellationToken.None);
+        var result = await DownloadQueue.RetryAsync(JobId, CancellationToken.None);
         _message = $"{result.Status}: {result.Message}";
         await OnParametersSetAsync();
     }

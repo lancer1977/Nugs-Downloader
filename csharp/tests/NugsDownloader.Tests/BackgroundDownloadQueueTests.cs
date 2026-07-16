@@ -179,6 +179,45 @@ public sealed class BackgroundDownloadQueueTests
         Assert.True(renewedExpiry > initialExpiry);
     }
 
+    [Fact]
+    public async Task ManualRetry_RejectsJobOwnedByActiveWorker()
+    {
+        var repository = new MemoryJobs();
+        var jobId = Guid.NewGuid();
+        await repository.SaveAsync(Job(jobId, DownloadJobStatus.Running, "active-worker", DateTimeOffset.UtcNow.AddMinutes(5)), CancellationToken.None);
+        var workflow = new RecordingWorkflow(repository, jobId);
+        await using var provider = new ServiceCollection().AddScoped<IDownloadWorkflow>(_ => workflow).BuildServiceProvider();
+        var queue = new BackgroundDownloadQueue(provider.GetRequiredService<IServiceScopeFactory>(), repository,
+            Options.Create(new BackgroundDownloadQueueOptions { Capacity = 2, Concurrency = 1, LeaseSeconds = 60, RetryDelaySeconds = 1 }));
+
+        var result = await queue.RetryAsync(jobId, CancellationToken.None);
+
+        Assert.Equal("LeaseActive", result.Status);
+        Assert.Equal(0, workflow.StartCount);
+        Assert.Equal("active-worker", (await repository.GetAsync(jobId, CancellationToken.None))?.LeaseOwnerId);
+    }
+
+    [Fact]
+    public async Task Scanner_MarksDueJobNeedsAuthenticationWhenReplayCredentialsAreUnavailable()
+    {
+        var repository = new MemoryJobs();
+        var jobId = Guid.NewGuid();
+        await repository.SaveAsync(Job(jobId, DownloadJobStatus.Ready, null) with { NextAttemptAt = DateTimeOffset.UtcNow }, CancellationToken.None);
+        var workflow = new RecordingWorkflow(repository, replayId: null);
+        await using var provider = new ServiceCollection().AddScoped<IDownloadWorkflow>(_ => workflow).BuildServiceProvider();
+        var queue = new BackgroundDownloadQueue(provider.GetRequiredService<IServiceScopeFactory>(), repository,
+            Options.Create(new BackgroundDownloadQueueOptions { Capacity = 2, Concurrency = 1, LeaseSeconds = 60, RetryDelaySeconds = 1 }));
+
+        await queue.StartAsync(CancellationToken.None);
+        await Task.Delay(150);
+        await queue.StopAsync(CancellationToken.None);
+
+        var job = await repository.GetAsync(jobId, CancellationToken.None);
+        Assert.Equal(DownloadJobStatus.Failed, job?.Status);
+        Assert.Contains("Re-authenticate", job?.ErrorMessage ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(job?.NextAttemptAt);
+    }
+
     private static StartDownloadRequest Request(Guid? id = null) => new(id, "nugs", new Uri("https://example.com/release"), new Credentials("user", "secret", null, "main"), new DownloadPreferences(null, null, false, false, false, "Downloads", true, true));
 
     private static DownloadJob Job(Guid id, DownloadJobStatus status, string? owner, DateTimeOffset? leaseExpiry = null) => new(id, "nugs", new Uri("https://example.com/release"), "Demo", status, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, status == DownloadJobStatus.Completed ? DateTimeOffset.UtcNow : null, null, "Downloads", "main", "user", null, owner, DateTimeOffset.UtcNow, leaseExpiry ?? DateTimeOffset.UtcNow.AddMinutes(-1));
