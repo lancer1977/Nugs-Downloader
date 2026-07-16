@@ -188,7 +188,7 @@ public sealed class BackgroundDownloadQueue : BackgroundService, IBackgroundDown
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1, _options.RetryDelaySeconds)));
         while (await timer.WaitForNextTickAsync(ct))
         {
-            await EnqueueDueRetriesAsync(ct);
+            await RecoverLeasesAndScheduleReadyJobsAsync(ct);
         }
     }
 

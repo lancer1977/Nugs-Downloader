@@ -138,7 +138,10 @@
             _model.Username,
             secretRef,
             AuthenticationState.Valid,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            string.IsNullOrWhiteSpace(_model.Password) && !string.IsNullOrWhiteSpace(_model.Token)
+                ? CredentialKind.Token
+                : CredentialKind.Password);
 
         await CredentialStore.SaveAsync(account, ct);
         return secretRef;
