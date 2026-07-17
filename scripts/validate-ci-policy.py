@@ -93,6 +93,19 @@ def require_exact(values: dict[tuple[str, ...], list[str]], path: tuple[str, ...
         fail(f"{'.'.join(path)} must be exactly {expected!r}; found {actual!r}")
 
 
+def require_permission_map(
+    values: dict[tuple[str, ...], list[str]],
+    path: tuple[str, ...],
+    expected: dict[str, str],
+) -> None:
+    actual: dict[str, str | list[str]] = {}
+    for candidate, candidate_values in values.items():
+        if candidate[:-1] == path:
+            actual[candidate[-1]] = candidate_values[0] if len(candidate_values) == 1 else candidate_values
+    if actual != expected:
+        fail(f"{'.'.join(path)} must be exactly {expected!r}; found {actual!r}")
+
+
 def validate(workflow: Path) -> None:
     if not workflow.is_file():
         fail(f"workflow not found: {workflow}")
@@ -103,11 +116,14 @@ def validate(workflow: Path) -> None:
         if ("jobs", job) not in values:
             fail(f"jobs.{job} is missing")
 
-    require_exact(values, ("permissions", "contents"), "read")
-    require_exact(values, ("jobs", "test", "permissions", "contents"), "read")
-    require_exact(values, ("jobs", "container", "permissions", "contents"), "read")
-    require_exact(values, ("jobs", "publish", "permissions", "contents"), "read")
-    require_exact(values, ("jobs", "publish", "permissions", "packages"), "write")
+    require_permission_map(values, ("permissions",), {"contents": "read"})
+    require_permission_map(values, ("jobs", "test", "permissions"), {"contents": "read"})
+    require_permission_map(values, ("jobs", "container", "permissions"), {"contents": "read"})
+    require_permission_map(
+        values,
+        ("jobs", "publish", "permissions"),
+        {"contents": "read", "packages": "write"},
+    )
     require_exact(values, ("jobs", "publish", "if"), TRUSTED_PUSH)
 
     package_writes = [
