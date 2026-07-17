@@ -10,18 +10,22 @@ scripts/nugs-watchdog.sh
 
 Override defaults with `NUGS_WATCHDOG_*` environment variables. The script never needs provider credentials. Set `NUGS_WATCHDOG_REQUIRE_DOCKER=1` when running on the Swarm manager so missing service/free-space checks fail hard.
 
-## `validate-ci-policy.sh`
+## `validate-ci-policy.py` and `test-ci-policy.sh`
 
 Deterministic, offline verification for the GitHub Actions permission boundary:
 
 ```bash
-scripts/validate-ci-policy.sh
+scripts/test-ci-policy.sh
 ```
 
-It proves that the `test` and `container` validation jobs are read-only, while
-the only `packages: write` grant belongs to the `publish` job. That job runs
-only for trusted pushes to `main` or `master`; pull requests build and validate
-without package-publication authority.
+The structural verifier proves that the `test` and `container` validation jobs
+are read-only, while the only `packages: write` grant belongs to the `publish`
+job. It rejects YAML aliases, merges, flow-style permission declarations, and
+unrecognized permission values so those cannot bypass the policy. The test
+wrapper also runs committed negative fixtures for top-level, test-job, and
+container-job package writes. The publish job runs only for trusted pushes to
+`main` or `master`; pull requests build and validate without package-publication
+authority.
 
 ## Coverage template
 
