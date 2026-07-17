@@ -1,0 +1,24 @@
+name: CI policy fixture
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - run: scripts/test-ci-policy.sh
+  container:
+    permissions:
+      contents: read
+    steps:
+    - run: true
+  publish:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - run: true

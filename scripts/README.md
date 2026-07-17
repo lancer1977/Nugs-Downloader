@@ -18,14 +18,15 @@ Deterministic, offline verification for the GitHub Actions permission boundary:
 scripts/test-ci-policy.sh
 ```
 
-The structural verifier proves that the `test` and `container` validation jobs
-are read-only, while the only `packages: write` grant belongs to the `publish`
-job. It rejects YAML aliases, merges, flow-style permission declarations, and
-unrecognized permission values so those cannot bypass the policy. The test
-wrapper also runs committed negative fixtures for top-level, test-job, and
-container-job package writes. The publish job runs only for trusted pushes to
-`main` or `master`; pull requests build and validate without package-publication
-authority.
+The structural verifier proves an exact permission allowlist: the workflow,
+`test`, and `container` jobs can contain only `contents: read`, while `publish`
+can contain only `contents: read` plus `packages: write`. It rejects YAML
+aliases, merges, flow-style permission declarations, and unrecognized
+permission values so those cannot bypass the policy. The test wrapper also runs
+committed negative fixtures for top-level, test-job, and container-job package
+writes plus extra `id-token` and `pull-requests` write scopes. The publish job
+runs only for trusted pushes to `main` or `master`; pull requests build and
+validate without write authority.
 
 ## Coverage template
 
