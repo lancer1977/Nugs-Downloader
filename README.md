@@ -45,7 +45,7 @@ NUGS_LIVE_TESTS=1 dotnet test csharp/NugsDownloader.sln --filter LiveNugsWorkflo
 
 ## CI/CD and watchdog
 
-GitHub Actions builds and tests the solution, runs the .NET vulnerable-package check, builds the R620 container image, and pushes an immutable `ghcr.io/lancer1977/nugs-downloader-web:<commit-sha>` tag on pushes to `main`.
+GitHub Actions builds and tests the solution, runs the .NET vulnerable-package check, and builds the R620 container image for pull requests. Those validation jobs have read-only repository access and cannot publish packages. A separate trusted-push job receives package-write authority only for pushes to `main` or `master`, where it pushes an immutable `ghcr.io/lancer1977/nugs-downloader-web:<commit-sha>` tag.
 
 The live LAN-only watchdog is `scripts/nugs-watchdog.sh`. It is quiet when healthy and prints only secret-free failure details. It checks:
 
