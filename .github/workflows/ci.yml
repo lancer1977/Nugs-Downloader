@@ -13,11 +13,12 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
     - uses: actions/checkout@v4
@@ -26,6 +27,9 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 10.0.x
+
+    - name: Verify CI permission policy
+      run: scripts/validate-ci-policy.sh
 
     - name: Install system dependencies
       run: |
@@ -47,6 +51,22 @@ jobs:
   container:
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build container image
+      run: docker build -f deploy/portainer/r620/Dockerfile -t ghcr.io/lancer1977/nugs-downloader-web:${{ github.sha }} .
+
+  publish:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    needs: [test, container]
+    permissions:
+      contents: read
+      packages: write
 
     steps:
     - uses: actions/checkout@v4
@@ -55,7 +75,6 @@ jobs:
       run: docker build -f deploy/portainer/r620/Dockerfile -t ghcr.io/lancer1977/nugs-downloader-web:${{ github.sha }} .
 
     - name: Log in to GHCR
-      if: github.event_name == 'push'
       uses: docker/login-action@v3
       with:
         registry: ghcr.io
@@ -63,9 +82,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Push immutable image tag
-      if: github.event_name == 'push'
       run: docker push ghcr.io/lancer1977/nugs-downloader-web:${{ github.sha }}
 
     - name: Print image digest
-      if: github.event_name == 'push'
       run: docker buildx imagetools inspect ghcr.io/lancer1977/nugs-downloader-web:${{ github.sha }}
