@@ -1,8 +1,12 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Options;
 using NugsDownloader.App.Abstractions;
 using NugsDownloader.App.UseCases;
 using NugsDownloader.Domain.Entities;
 using NugsDownloader.Domain.Providers;
 using NugsDownloader.Domain.ValueObjects;
+using NugsDownloader.Web.Options;
+using NugsDownloader.Web.Services;
 using Xunit;
 
 namespace NugsDownloader.Tests;
@@ -216,6 +220,84 @@ public class WorkflowTests
         Assert.Equal("pass", provider.LastCredentials?.Password);
         Assert.True(provider.ExecuteCalled);
         Assert.Contains(provider.LastPlan!.ExpectedFiles, file => file.Kind == FileKind.Audio);
+    }
+
+    [Fact]
+    public async Task DownloadWorkflow_ResumeReplaysLegacySqliteAccountAsPasswordCredentials()
+    {
+        var stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var paths = new SqliteStorePaths(Options.Create(new NugsDownloaderStorageOptions { StateDirectory = stateDirectory }));
+        var accountId = Guid.NewGuid();
+        var jobId = Guid.NewGuid();
+        const string label = "Legacy";
+
+        Directory.CreateDirectory(stateDirectory);
+        await using (var connection = new SqliteConnection($"Data Source={paths.DatabasePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE provider_accounts (
+                    Id TEXT PRIMARY KEY,
+                    ProviderId TEXT NOT NULL,
+                    Label TEXT NOT NULL,
+                    Username TEXT NOT NULL,
+                    SecretRef TEXT NOT NULL,
+                    AuthState INTEGER NOT NULL,
+                    LastVerifiedAt TEXT NULL,
+                    UNIQUE(ProviderId, Label)
+                );
+                INSERT INTO provider_accounts (
+                    Id, ProviderId, Label, Username, SecretRef, AuthState, LastVerifiedAt
+                ) VALUES (
+                    $Id, $ProviderId, $Label, $Username, $SecretRef, $AuthState, $LastVerifiedAt
+                );
+                """;
+            command.Parameters.AddWithValue("$Id", accountId.ToString());
+            command.Parameters.AddWithValue("$ProviderId", "replay");
+            command.Parameters.AddWithValue("$Label", label);
+            command.Parameters.AddWithValue("$Username", "alice");
+            command.Parameters.AddWithValue("$SecretRef", "replay:Legacy");
+            command.Parameters.AddWithValue("$AuthState", (int)AuthenticationState.Valid);
+            command.Parameters.AddWithValue("$LastVerifiedAt", SqliteStateStore.Encode(DateTimeOffset.UtcNow));
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var store = new SqliteStateStore(paths);
+        var credentials = new SqliteCredentialStore(store);
+        var vault = new SqliteSecretVault(store);
+        var account = await credentials.GetAsync("replay", label, CancellationToken.None);
+        await vault.StoreAsync("replay", label, "stored-secret", CancellationToken.None);
+        var jobs = new MemoryJobRepository();
+        var provider = new ReplayProvider();
+        var workflow = new DownloadWorkflow(
+            new InMemoryProviderCatalog(new IMediaProvider[] { provider }),
+            jobs,
+            new MemoryFileStateRepository(),
+            credentials,
+            vault);
+        await jobs.SaveAsync(new DownloadJob(
+            jobId,
+            provider.Id,
+            new Uri("https://example.com/release/legacy"),
+            "Legacy replay",
+            DownloadJobStatus.Paused,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null,
+            null,
+            "Downloads",
+            label,
+            "alice",
+            new DownloadPreferences("flac", "1080p", false, false, false, "Downloads", true, true)), CancellationToken.None);
+
+        var resumed = await workflow.ResumeAsync(jobId, CancellationToken.None);
+
+        Assert.Equal(CredentialKind.Password, account!.CredentialKind);
+        Assert.Equal("Completed", resumed.Status);
+        Assert.Equal("alice", provider.LastCredentials?.Username);
+        Assert.Equal("stored-secret", provider.LastCredentials?.Password);
+        Assert.Null(provider.LastCredentials?.Token);
     }
 
     [Fact]
