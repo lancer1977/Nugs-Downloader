@@ -68,3 +68,24 @@ Follow the closest `AGENTS.md` first, then the workspace-root `AGENTS.md` when t
   secret or access changes, material cost, external communication, and credible
   downtime or data-loss risk.
 <!-- dev-forge:low-interruption:end -->
+
+<!-- dev-forge:dotnet-mvvm-testing:start version=1 -->
+## .NET MVVM and Testing Standard
+
+- Keep Views (XAML, Blazor components) limited to layout and bindings; no
+  business logic in code-behind or `@code` blocks beyond simple UI wiring.
+- ViewModels are plain C# or `ReactiveObject`/`ObservableObject`-based,
+  constructed via DI, free of direct UI-framework dependencies, and injected
+  with services as interfaces so they can be unit-tested without a UI thread.
+- Prefer Blazor over introducing a second UI stack for new .NET UI surfaces —
+  its component model maps onto the same MVVM split used elsewhere in the
+  portfolio. Record the reason in this repo's `AGENTS.md` when a different
+  stack is a deliberate exception.
+- Unit-test ViewModels, parsers, and business/domain logic; keep those tests
+  free of filesystem, network, database, or UI-thread dependencies.
+- Add integration tests where a change crosses a boundary a unit test can't
+  observe (parser-to-event pipelines, storage round trips, external API
+  calls).
+- Full standard: `docs/architecture/dotnet-mvvm-and-testing-standard.md` in
+  `dev-forge`.
+<!-- dev-forge:dotnet-mvvm-testing:end -->
