@@ -1,64 +1,64 @@
 ---
 name: nugs-downloader
-description: Download high-quality audio and video from nugs.net. Use when users provide nugs.net URLs (release, artist, playlist, video, webcast) and want to download content in specific formats (ALAC, FLAC, MQA, AAC) or video resolutions (480p up to 4K).
+description: Operate the LAN-only Nugs Downloader application or its explicitly installed command-line companion. Use when a user asks to submit, inspect, or troubleshoot a nugs.net download without exposing credentials or making the service public.
 ---
 
 # Nugs Downloader
 
-Downloader for nugs.net written in Go.
+`lancer1977/Nugs-Downloader` owns the active Nugs product. It is a .NET 10
+Blazor web application deployed as the internal `nugs.polyhydragames.com`
+service. The repository also documents a legacy/companion `nugs-downloader`
+executable; never assume that executable is installed or that it is the web
+application.
 
-## Features
+## Operating boundary
 
-- **Artist/Album Organization**: Automatically creates a nested directory structure: `/ArtistName/AlbumName`.
-- **Show Metadata**: Generates a `README.md` in each album folder containing detailed metadata about the show/album.
-- **High Quality**: Supports ALAC, FLAC, MQA, and 360 Reality Audio.
-- **Video Support**: Downloads videos in resolutions up to 4K.
+- Keep the service LAN-only. Do not add public DNS, remove the Traefik
+  allowlist, or expose the application to the internet.
+- Credentials belong in the configured secret store or application secret
+  contract. Never put Nugs credentials, tokens, cookies, or download URLs with
+  embedded secrets in prompts, logs, commits, or skill text.
+- Treat downloaded media and the configured download directory as private
+  user data. Do not copy it into a repository or a temporary artifact bundle.
+- Do not run a live download or mutate the service unless the user explicitly
+  asks for that operation.
 
-## Setup Requirements
+## Choose the supported surface
 
-- **Binary**: `nugs-downloader` (typically in PATH or `~/bin`).
-- **Config**: `config.json` should be in `~/.nugs-downloader/config.json` (created automatically with a `README.txt` explanation on first run), the same directory as the binary, or the current working directory.
-- **FFmpeg**: Required for video processing and HLS tracks. Assumed to be in system PATH by default.
+For normal user downloads, use the internal web application and its documented
+job workflow. Verify the service health endpoint first when troubleshooting:
 
-## Configuration (config.json)
-
-| Option | Description |
-| --- | --- |
-| email | Your nugs.net email address. |
-| password | Your nugs.net password. |
-| format | Quality: 1=ALAC, 2=FLAC, 3=MQA, 4=360RA, 5=150Kbps AAC. |
-| videoFormat | Resolution: 1=480p, 2=720p, 3=1080p, 4=1440p, 5=4K. |
-| outPath | Directory to save downloads. |
-| useFfmpegEnvVar | Set to `true` to use system PATH for FFmpeg. |
-
-## Usage Examples
-
-Args take priority over `config.json`.
-
-### Download Albums
-```bash
-nugs-downloader https://play.nugs.net/release/23329
+```text
+https://nugs.polyhydragames.com/health/ready
 ```
 
-### Download Multiple Items
+For local development, run the application from the repository checkout:
+
 ```bash
-nugs-downloader https://play.nugs.net/release/23329 https://play.nugs.net/release/23790
+dotnet run --project csharp/NugsDownloader.Web
 ```
 
-### Download with Overrides
+If the user explicitly requests the companion CLI, first verify the executable
+and read its current help output; do not assume `~/bin/nugs-downloader` or a
+specific argument spelling:
+
 ```bash
-nugs-downloader --format 2 --videoformat 3 --outpath "./MyDownloads" https://play.nugs.net/release/23329
+command -v nugs-downloader
+nugs-downloader --help
 ```
 
-### Options Reference
+Only pass a user-provided release URL or ID after the command contract has been
+verified. Use a temporary output directory for tests and preserve the user's
+configured download root for real operations.
 
-- `-f, --format`: Audio format (1-5).
-- `-F, --videoformat`: Video format (1-5).
-- `-o, --outpath`: Output path.
-- `--force-video`: Forces video when audio co-exists.
-- `--skip-videos`: Skips videos in artist URLs.
-- `--skip-chapters`: Skips chapters for videos.
+## Validation
 
-## Error Handling
+Use repository-local build/tests for code changes:
 
-If authentication fails, ensure credentials in `config.json` are correct or use a `--token` override if available. For video errors, verify `ffmpeg` is installed and accessible in the system PATH.
+```bash
+dotnet build csharp/NugsDownloader.sln
+dotnet test csharp/NugsDownloader.sln
+```
+
+Live download tests require the repository's explicit live-test opt-in and
+secret contract. Do not enable them as a routine skill action.
