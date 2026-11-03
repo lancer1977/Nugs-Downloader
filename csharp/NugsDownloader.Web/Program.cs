@@ -48,6 +48,11 @@ builder.Services
 
 var app = builder.Build();
 
+// Complete schema creation and legacy account migration before hosted queue
+// workers start or any request can list/use saved accounts.
+await app.Services.GetRequiredService<SqliteStateStore>()
+    .ExecuteAsync(_ => Task.CompletedTask, CancellationToken.None);
+
 var aspNetCoreFrameworkAssets = ResolveAspNetCoreFrameworkAssetsPath();
 if (aspNetCoreFrameworkAssets is not null)
 {
