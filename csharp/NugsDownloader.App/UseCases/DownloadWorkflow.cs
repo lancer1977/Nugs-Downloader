@@ -146,22 +146,31 @@ public sealed class DownloadWorkflow : IDownloadWorkflow
                 }, ct);
             }
 
-            await provider.ExecuteDownloadAsync(plan, progress, ct);
-
-            foreach (var expectedFile in plan.ExpectedFiles)
+            var downloadCompleted = false;
+            try
             {
-                var actualFile = File.Exists(expectedFile.FilePath)
-                    ? new FileInfo(expectedFile.FilePath)
-                    : null;
-
-                await _fileStateRepository.SaveAsync(expectedFile with
+                await provider.ExecuteDownloadAsync(plan, progress, ct);
+                downloadCompleted = true;
+            }
+            finally
+            {
+                // Execution can discover a container suffix after the initial states
+                // were saved. Keep successful file paths even if a later track fails.
+                foreach (var expectedFile in plan.ExpectedFiles)
                 {
-                    JobId = jobId,
-                    Status = FileStatus.Complete,
-                    ActualSize = actualFile?.Length ?? expectedFile.ActualSize,
-                    ExpectedSize = actualFile?.Length ?? expectedFile.ExpectedSize,
-                    LastVerifiedAt = DateTimeOffset.UtcNow
-                }, ct);
+                    var actualFile = File.Exists(expectedFile.FilePath)
+                        ? new FileInfo(expectedFile.FilePath)
+                        : null;
+
+                    await _fileStateRepository.SaveAsync(expectedFile with
+                    {
+                        JobId = jobId,
+                        Status = downloadCompleted ? FileStatus.Complete : FileStatus.Partial,
+                        ActualSize = actualFile?.Length ?? expectedFile.ActualSize,
+                        ExpectedSize = actualFile?.Length ?? expectedFile.ExpectedSize,
+                        LastVerifiedAt = downloadCompleted || actualFile is not null ? DateTimeOffset.UtcNow : null
+                    }, CancellationToken.None);
+                }
             }
 
             if (!await SaveJobAsync(job with

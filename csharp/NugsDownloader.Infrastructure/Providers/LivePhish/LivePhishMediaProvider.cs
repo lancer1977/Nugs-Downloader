@@ -236,7 +236,10 @@ public sealed class LivePhishMediaProvider : ILivePhishProvider
                     throw new InvalidOperationException($"No media URL is available for LivePhish audio item {item?.Id ?? index.ToString()}.");
                 }
 
-                await DownloadMediaFileAtomicallyAsync(mediaUri, targetPath, ct);
+                var resolvedPath = await NugsDownloader.Infrastructure.Downloads.AudioFileDownload.WriteAsync(
+                    mediaUri, targetPath, _apiClient.DownloadFileAsync, ct);
+                plan.ExpectedFiles = plan.ExpectedFiles.Select((file, fileIndex) => fileIndex == index
+                    ? file with { FilePath = resolvedPath } : file).ToArray();
                 break;
             case FileKind.Metadata:
                 await WriteTextFileAtomicallyAsync(targetPath, BuildMetadataFile(plan), ct);
@@ -244,35 +247,6 @@ public sealed class LivePhishMediaProvider : ILivePhishProvider
             case FileKind.Artwork:
                 await WriteTextFileAtomicallyAsync(targetPath, "Artwork unavailable for this LivePhish item.", ct);
                 break;
-        }
-    }
-
-    private async Task DownloadMediaFileAtomicallyAsync(Uri mediaUri, string targetPath, CancellationToken ct)
-    {
-        var partialPath = targetPath + ".partial";
-        try
-        {
-            await using (var destination = File.Create(partialPath))
-            {
-                await _apiClient.DownloadFileAsync(mediaUri, destination, ct);
-            }
-
-            var downloaded = new FileInfo(partialPath);
-            if (!downloaded.Exists || downloaded.Length <= 0)
-            {
-                throw new InvalidOperationException("Downloaded LivePhish media file was empty.");
-            }
-
-            File.Move(partialPath, targetPath, overwrite: true);
-        }
-        catch
-        {
-            if (File.Exists(partialPath))
-            {
-                File.Delete(partialPath);
-            }
-
-            throw;
         }
     }
 
@@ -360,13 +334,11 @@ public sealed class LivePhishMediaProvider : ILivePhishProvider
             ? rawTrackNumber.PadLeft(2, '0')
             : (item.Index + 1).ToString("D2");
 
-        var extension = string.IsNullOrWhiteSpace(preferredAudioFormat)
-            ? string.Empty
-            : preferredAudioFormat.StartsWith('.')
-                ? preferredAudioFormat
-                : "." + SanitizePathSegment(preferredAudioFormat);
-
-        return $"{trackNumber}. {SanitizePathSegment(item.DisplayName)}{extension}";
+        var extension = NugsDownloader.Infrastructure.Downloads.AudioFileName.FromUri(ResolveMediaUri(item))
+            ?? NugsDownloader.Infrastructure.Downloads.AudioFileName.FromName(item.DisplayName)
+            ?? ".bin";
+        return NugsDownloader.Infrastructure.Downloads.AudioFileName.WithExtension(
+            $"{trackNumber}. {SanitizePathSegment(item.DisplayName)}", extension);
     }
 
     private static IReadOnlyDictionary<string, string> BuildTrackMetadata(LivePhishApiClient.Track track, int index)

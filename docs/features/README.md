@@ -19,6 +19,7 @@ This folder tracks the active C# application surfaces and the cleanup work aroun
 - [Backend Layout](./backend-layout.md)
 - [Web UI](./web-ui.md)
 - [Config and Hosting](./config-and-cli.md)
+- [Audio filenames and container detection](./audio-file-extensions.md) — Hermes Kanban: `t_fa47380a`
 - [Portainer Stack](./portainer-stack/README.md)
 
 ## Cleanup Checklist

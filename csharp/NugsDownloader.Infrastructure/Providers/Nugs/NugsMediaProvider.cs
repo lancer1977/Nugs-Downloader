@@ -340,7 +340,9 @@ public sealed class NugsMediaProvider : INugsProvider
                     throw new InvalidOperationException($"No media URL is available for {expectedFile.Kind.ToString().ToLowerInvariant()} item {item?.Id ?? index.ToString()}.");
                 }
 
-                await DownloadMediaFileAtomicallyAsync(mediaUri, targetPath, ct);
+                var resolvedPath = await DownloadMediaFileAtomicallyAsync(mediaUri, targetPath, ct, expectedFile.Kind == FileKind.Audio);
+                plan.ExpectedFiles = plan.ExpectedFiles.Select((file, fileIndex) => fileIndex == index
+                    ? file with { FilePath = resolvedPath } : file).ToArray();
                 break;
             case FileKind.Metadata:
                 await WriteTextFileAtomicallyAsync(targetPath, BuildMetadataFile(plan), ct);
@@ -359,8 +361,13 @@ public sealed class NugsMediaProvider : INugsProvider
         }
     }
 
-    private async Task DownloadMediaFileAtomicallyAsync(Uri mediaUri, string targetPath, CancellationToken ct)
+    private async Task<string> DownloadMediaFileAtomicallyAsync(Uri mediaUri, string targetPath, CancellationToken ct, bool resolveAudioExtension = false)
     {
+        if (resolveAudioExtension)
+        {
+            return await NugsDownloader.Infrastructure.Downloads.AudioFileDownload.WriteAsync(
+                mediaUri, targetPath, _apiClient.DownloadFileAsync, ct);
+        }
         var partialPath = targetPath + ".partial";
         try
         {
@@ -376,6 +383,7 @@ public sealed class NugsMediaProvider : INugsProvider
             }
 
             File.Move(partialPath, targetPath, overwrite: true);
+            return targetPath;
         }
         catch
         {
@@ -547,13 +555,11 @@ public sealed class NugsMediaProvider : INugsProvider
             ? rawTrackNumber.PadLeft(2, '0')
             : (item.Index + 1).ToString("D2");
 
-        var extension = string.IsNullOrWhiteSpace(preferredAudioFormat)
-            ? string.Empty
-            : preferredAudioFormat.StartsWith('.')
-                ? preferredAudioFormat
-                : "." + SanitizePathSegment(preferredAudioFormat);
-
-        return $"{trackNumber}. {SanitizePathSegment(item.DisplayName)}{extension}";
+        var extension = NugsDownloader.Infrastructure.Downloads.AudioFileName.FromUri(ResolveMediaUri(item))
+            ?? NugsDownloader.Infrastructure.Downloads.AudioFileName.FromName(item.DisplayName)
+            ?? ".bin";
+        return NugsDownloader.Infrastructure.Downloads.AudioFileName.WithExtension(
+            $"{trackNumber}. {SanitizePathSegment(item.DisplayName)}", extension);
     }
 
     private static string BuildVideoFileName(MediaDiscoveryResult discovery, string? preferredVideoResolution)
