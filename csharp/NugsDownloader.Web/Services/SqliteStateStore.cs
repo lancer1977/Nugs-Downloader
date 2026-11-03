@@ -104,12 +104,24 @@ public sealed class SqliteStateStore
                 SecretRef TEXT PRIMARY KEY,
                 ProviderId TEXT NOT NULL,
                 Label TEXT NOT NULL,
-                SecretValue TEXT NOT NULL
+                SecretValue TEXT NOT NULL,
+                StorageFormat TEXT NOT NULL DEFAULT 'plaintext'
             );
             """;
         await command.ExecuteNonQueryAsync(ct);
         await EnsureJobLeaseColumnsAsync(connection, ct);
         await EnsureColumnAsync(connection, "provider_accounts", "CredentialKind", "INTEGER NOT NULL DEFAULT 0", ct);
+        await EnsureColumnAsync(connection, "secret_material", "StorageFormat", "TEXT NOT NULL DEFAULT 'plaintext'", ct);
+        try
+        {
+            await LegacyAccountMigration.ImportAsync(connection, directory!, ct);
+        }
+        catch (SqliteException)
+        {
+            // SQLite trigger/constraint messages can contain material from the input.
+            // Do not attach the original exception to the startup error.
+            throw new InvalidOperationException("Legacy account migration failed; no account/secret pairs were imported. Check SQLite storage and restart.");
+        }
         _initialized = true;
     }
 
