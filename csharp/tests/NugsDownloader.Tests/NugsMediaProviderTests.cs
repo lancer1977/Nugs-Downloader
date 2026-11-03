@@ -212,7 +212,7 @@ public class NugsMediaProviderTests
         Assert.Single(plan.Items);
         Assert.Equal("flac", plan.Items[0].Metadata["selectedAudioFormat"]);
         Assert.Equal("1", plan.Items[0].Metadata["trackNumber"]);
-        Assert.Equal(Path.Combine("Downloads", "Artist", "Album", "01. Song 1.flac"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Audio).FilePath);
+        Assert.Equal(Path.Combine("Downloads", "Artist", "Album", "01. Song 1.bin"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Audio).FilePath);
         Assert.Equal(Path.Combine("Downloads", "Artist", "Album", "metadata.nfo"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Metadata).FilePath);
         Assert.Equal(Path.Combine("Downloads", "Artist", "Album", "cover.jpg"), Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Artwork).FilePath);
     }
@@ -234,7 +234,7 @@ public class NugsMediaProviderTests
         var plan = await provider.BuildDownloadPlanAsync(discovery, preferences, CancellationToken.None);
 
         var audioFile = Assert.Single(plan.ExpectedFiles, file => file.Kind == NugsDownloader.Domain.Entities.FileKind.Audio);
-        Assert.Equal(Path.Combine("Library", "Playlist", "01. Playlist Song.aac"), audioFile.FilePath);
+        Assert.Equal(Path.Combine("Library", "Playlist", "01. Playlist Song.bin"), audioFile.FilePath);
         Assert.Equal("aac", plan.Items[0].Metadata["selectedAudioFormat"]);
         Assert.Equal("1", plan.Items[0].Metadata["trackNumber"]);
         Assert.All(plan.ExpectedFiles, file => Assert.StartsWith("Library", file.FilePath));

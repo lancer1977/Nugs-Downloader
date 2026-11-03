@@ -9,5 +9,10 @@ public sealed record DownloadPlan(
     string OutputRoot,
     DownloadPreferences Preferences,
     IReadOnlyList<FileState> ExpectedFiles,
-    object? ResumeState);
+    object? ResumeState)
+{
+    // Execution may resolve a different container than the provisional planned path.
+    // The workflow must persist these resolved paths, retaining the original file IDs.
+    public IReadOnlyList<FileState> ExpectedFiles { get; set; } = ExpectedFiles;
+}
 
