@@ -30,26 +30,37 @@ naming an MP4-family container `.aac` or `.alac`.
 
 ## Signature and fallback limits
 
-The detector reads at most the first 16 bytes. It recognizes `fLaC` as FLAC,
-`RIFF` plus `WAVE` as WAV, an `ftyp` box with major brand `M4A ` as M4A,
-`ftyp` with major brand `isom` as MP4, and the supported ADTS sync bytes
-(`FF F1` or `FF F9`) as raw AAC. A generic `ftyp` box is not sufficient: other
-brands, including HEIF, do not establish an audio container. Recognized
-signatures take precedence over conflicting URL and MIME labels.
+The detector reads at most the first 4096 bytes and walks at most 32 top-level
+ISO BMFF boxes. It skips only leading `free`, `skip`, and `wide` padding boxes;
+it does not search arbitrary payload bytes for `ftyp`. Ordinary and extended
+64-bit lengths are checked against the buffered bytes before slicing or advancing.
+Zero/to-EOF lengths, truncated headers/payloads, undersized boxes, misaligned
+brand tables, and scan-budget exhaustion resolve conservatively to `.bin`.
+No allocation or seek is driven by an untrusted box length.
 
-Supported MIME fallbacks are `audio/mp4` → `.m4a`, `audio/flac` → `.flac`, and
-`audio/mpeg` → `.mp3`. Other MIME values, including `application/octet-stream`
-and `audio/aac`, do not independently prove a suffix. Without a recognized
-signature or supported MIME type, the URL suffix is used; without that, `.bin`
-explicitly records uncertainty rather than inventing an audio format.
+A complete `ftyp` major or compatible brand `M4A ` selects `.m4a`; `isom`,
+`iso2`, `mp41`, and `mp42` select `.mp4`. The minor-version field is not a brand.
+Recognized HEIF/HEIC and AVIF image brands in either position veto audio naming,
+even alongside an MP4 brand or conflicting audio MIME/URL. Unknown `ftyp` brands
+also resolve to `.bin`, explicitly suppressing metadata fallback. This is a
+container filename decision, not proof of an audio track or its codec.
+
+Other signatures remain `fLaC` as FLAC, `RIFF` plus `WAVE` as WAV, and supported
+ADTS sync bytes (`FF F1` or `FF F9`) as raw AAC. Recognized signatures take
+precedence over conflicting URL and MIME labels.
+
+Supported MIME fallbacks are case-insensitive: `audio/mp4` → `.m4a`,
+`audio/flac` → `.flac`, and `audio/mpeg` → `.mp3`. Other MIME values, including
+`application/octet-stream` and `audio/aac`, do not independently prove a suffix.
+When bytes do not identify a supported signature or BMFF container, supported
+MIME then URL suffixes may be used; without either, `.bin` records uncertainty.
 
 This is bounded filename detection, not codec inspection, full media validation,
-or proof that a file is playable. Unsupported MP4 brands and other audio
-signatures may rely on MIME/URL metadata or end up as `.bin`. Metadata can be
-incorrect when a signature is not recognized. Existing files with a different
-old suffix are not migrated or removed; a successful rename may overwrite an
-existing file at the resolved destination, following the existing download
-replacement policy.
+or proof that a file is playable. Unsupported containers may end up as `.bin`;
+metadata can be incorrect for otherwise unidentified bytes. Existing files with
+a different old suffix are not migrated or removed; a successful rename may
+overwrite an existing file at the resolved destination, following the existing
+download replacement policy.
 
 ## Offline verification
 
@@ -68,6 +79,10 @@ dotnet build csharp/NugsDownloader.sln --no-restore
 
 The regression fixtures exercise both providers, extensionless entitled URLs,
 signature/metadata conflicts, dotted titles, persisted paths after a later-track
-failure, empty responses, and interrupted transfers. Header fixtures are minimal
-container bytes, not playable recordings. No live authentication, downloads, or
-production deployment is required or certified by these tests.
+failure, empty responses, interrupted/cancelled transfers, and final-move failure.
+Two checked-in synthetic AAC/MP4 fixtures (major brand `mp42`, with and without
+leading `free`) are playable and require no FFmpeg at test runtime; see their
+[fixture provenance](../../csharp/tests/NugsDownloader.Tests/Fixtures/README.md).
+Other signature and malformed-box fixtures are minimal headers, not recordings.
+No live authentication, downloads, or production deployment is required or
+certified by these tests.

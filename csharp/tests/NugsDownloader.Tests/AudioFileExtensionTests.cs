@@ -142,10 +142,13 @@ public sealed class AudioFileExtensionTests
     [InlineData("livephish", "https://media.test/entitled", "audio/flac", "01020304", "Song. Part", ".flac")]
     [InlineData("nugs", "https://media.test/entitled", "audio/mpeg", "01020304", "Song. Part", ".mp3")]
     [InlineData("nugs", "https://media.test/track.m4a?token=.flac", "application/octet-stream", "01020304", "Song. Part.m4a", ".m4a")]
-    public async Task AudioDownload_UsesSignatureBeforeConflictingMetadata(string providerId, string url, string mime, string hex, string title, string extension)
+    public Task AudioDownload_UsesSignatureBeforeConflictingMetadata(string providerId, string url, string mime, string hex, string title, string extension) =>
+        AssertAudioDownloadAsync(providerId, url, mime, hex, title, extension);
+
+    private static async Task AssertAudioDownloadAsync(string providerId, string url, string mime, string hex, string title, string extension)
     {
         var root = Path.Combine(Path.GetTempPath(), "audio-extension-" + Guid.NewGuid().ToString("N"));
-        var bytes = Convert.FromHexString(hex); // Minimal container headers, not playable media fixtures.
+        var bytes = Convert.FromHexString(hex); // Minimal signature bytes or a full synthetic fixture.
         using var http = new HttpClient(new FixtureHandler(_ =>
         {
             var content = new ByteArrayContent(bytes);
@@ -176,6 +179,78 @@ public sealed class AudioFileExtensionTests
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }
+
+    [Theory]
+    [InlineData("nugs", "synthetic-mp42.mp4", "aac", "audio/aac")]
+    [InlineData("livephish", "synthetic-mp42.mp4", "aac", "audio/aac")]
+    [InlineData("nugs", "synthetic-mp42.mp4", "flac", "audio/flac")]
+    [InlineData("livephish", "synthetic-mp42.mp4", "flac", "audio/flac")]
+    [InlineData("nugs", "synthetic-free-mp42.mp4", "aac", "audio/aac")]
+    [InlineData("livephish", "synthetic-free-mp42.mp4", "aac", "audio/aac")]
+    [InlineData("nugs", "synthetic-free-mp42.mp4", "flac", "audio/flac")]
+    [InlineData("livephish", "synthetic-free-mp42.mp4", "flac", "audio/flac")]
+    public async Task AudioDownload_PlayableMp42OverridesConflictingMetadata(string providerId, string fixture, string suffix, string mime)
+    {
+        var bytes = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", Path.GetFileName(fixture)));
+        await AssertAudioDownloadAsync(providerId,
+            "https://media.test/track." + suffix, mime, Convert.ToHexString(bytes), "Song. Part", ".mp4");
+    }
+
+    [Theory]
+    [InlineData("nugs", "000000186674797068656963000000006865696369736F6D")]
+    [InlineData("livephish", "000000186674797068656963000000006865696369736F6D")]
+    [InlineData("nugs", "000000186674797069736F6D000000006865696369736F6D")]
+    [InlineData("livephish", "000000186674797069736F6D000000006865696369736F6D")]
+    public Task AudioDownload_ImageBrandsVetoConflictingAudioMetadata(string providerId, string hex) =>
+        AssertAudioDownloadAsync(providerId,
+            "https://media.test/track.aac", "audio/flac", hex, "Song. Part", ".bin");
+
+    [Theory]
+    [InlineData("0000001866747970787878780000000069736F6D6D703432", ".mp4")]
+    [InlineData("000000186674797078787878000000006D70343269736F6D", ".mp4")]
+    [InlineData("000000186674797069736F6D0000000069736F6D4D344120", ".m4a")]
+    [InlineData("000000186674797069736F320000000069736F326D703431", ".mp4")]
+    [InlineData("00000018667479706D703431000000006D70343100000000", ".mp4")]
+    public Task AudioDownload_UsesCompatibleMp4Brands(string hex, string extension) =>
+        AssertAudioDownloadAsync("nugs",
+            "https://media.test/track.aac", "audio/flac", hex, "Song. Part", extension);
+
+    public static IEnumerable<object[]> BmffBoxCases()
+    {
+        const string ftyp = "00000018667479706D703432000000006D70343269736F6D";
+        yield return new object[] { "short box", "00000004667479706D703432", ".bin" };
+        yield return new object[] { "short ftyp payload", "0000000C667479706D703432", ".bin" };
+        yield return new object[] { "truncated box", "00000020667479706D703432000000006D70343269736F6D", ".bin" };
+        yield return new object[] { "unaligned brands", "00000011667479706D7034320000000000", ".bin" };
+        yield return new object[] { "uint max", "FFFFFFFF667479706D70343200000000", ".bin" };
+        yield return new object[] { "zero size free cannot expose later ftyp", "0000000066726565" + ftyp, ".bin" };
+        yield return new object[] { "short extended header", "0000000166747970", ".bin" };
+        yield return new object[] { "ulong max", "0000000166747970FFFFFFFFFFFFFFFF6D70343200000000", ".bin" };
+        yield return new object[] { "undersized extended box", "000000016674797000000000000000086D70343200000000", ".bin" };
+        yield return new object[] { "unknown container brand", "00000010667479707878787800000000", ".bin" };
+        yield return new object[] { "box count bound", string.Concat(Enumerable.Repeat("0000000866726565", 32)) + ftyp, ".bin" };
+        yield return new object[] { "byte bound", "0000100066726565" + new string('0', (4096 - 8) * 2) + ftyp, ".bin" };
+        yield return new object[] { "truncated prefix tail", "00000008667265650000", ".bin" };
+        yield return new object[] { "extended ftyp", "000000016674797000000000000000206D703432000000006D70343269736F6D", ".mp4" };
+        yield return new object[] { "extended free", "00000001667265650000000000000010" + ftyp, ".mp4" };
+    }
+
+    [Theory]
+    [MemberData(nameof(BmffBoxCases))]
+    public Task AudioDownload_BmffBoxSizesAreBounded(string scenario, string hex, string extension)
+    {
+        Assert.NotEmpty(scenario);
+        return AssertAudioDownloadAsync("nugs",
+            "https://media.test/track.aac", "audio/flac", hex, "Song. Part", extension);
+    }
+
+    [Theory]
+    [InlineData("nugs", "AuDiO/FlAc", ".flac")]
+    [InlineData("livephish", "AUDIO/MP4", ".m4a")]
+    [InlineData("nugs", "Audio/MPEG", ".mp3")]
+    public Task AudioDownload_MimeFallbackIsCaseInsensitive(string providerId, string mime, string extension) =>
+        AssertAudioDownloadAsync(providerId,
+            "https://media.test/track.aac", mime, "01020304", "Song. Part", extension);
 
     [Theory]
     [InlineData("nugs", null, "Song. Part", "01. Song. Part.bin")]
@@ -237,6 +312,63 @@ public sealed class AudioFileExtensionTests
         finally
         {
             Directory.Delete(root, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("nugs", false)]
+    [InlineData("livephish", false)]
+    [InlineData("nugs", true)]
+    [InlineData("livephish", true)]
+    public async Task AudioDownload_CancellationOrFinalMoveFailurePreservesExistingTarget(string providerId, bool cancel)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "audio-extension-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var target = Path.Combine(root, "01. Song.m4a");
+        var blockedFinalPath = Path.Combine(root, "01. Song.flac");
+        var original = new byte[] { 7, 8, 9 };
+        await File.WriteAllBytesAsync(target, original);
+        // A directory at the resolved filename makes the real File.Move fail.
+        Directory.CreateDirectory(blockedFinalPath);
+        using var cancellation = new CancellationTokenSource();
+        using var http = new HttpClient(new FixtureHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) {
+            Content = cancel ? new CancelingContent(cancellation) : new ByteArrayContent("fLaC"u8.ToArray())
+        }));
+        NugsDownloader.Domain.Providers.IMediaProvider provider = providerId == "nugs"
+            ? new NugsMediaProvider(new NugsApiClient(http))
+            : new NugsDownloader.Infrastructure.Providers.LivePhish.LivePhishMediaProvider(
+                new NugsDownloader.Infrastructure.Providers.LivePhish.LivePhishApiClient(http));
+        try
+        {
+            var state = new FileState(Guid.NewGuid(), Guid.Empty, target, FileKind.Audio, FileStatus.Partial, 0, 0, null, null);
+            var plan = new DownloadPlan(providerId, Guid.NewGuid(), new[] {
+                new MediaItem("1", "Song", "audio", 0, new Dictionary<string, string> { ["downloadUrl"] = "https://media.test/song.m4a" })
+            }, root, new DownloadPreferences(null, null, false, false, false, root, false, false), new[] { state }, null);
+            if (cancel)
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.ExecuteDownloadAsync(plan, new InlineProgress(), cancellation.Token));
+            else
+                await Assert.ThrowsAnyAsync<IOException>(() => provider.ExecuteDownloadAsync(plan, new InlineProgress(), cancellation.Token));
+            Assert.Equal(target, Assert.Single(plan.ExpectedFiles).FilePath);
+            Assert.Equal(original, await File.ReadAllBytesAsync(target));
+            Assert.False(File.Exists(target + ".partial"));
+            Assert.Single(Directory.GetFiles(root));
+            Assert.True(Directory.Exists(blockedFinalPath));
+            Assert.Empty(Directory.GetFileSystemEntries(blockedFinalPath));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    private sealed class CancelingContent(CancellationTokenSource cancellation) : HttpContent
+    {
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+        {
+            await stream.WriteAsync(new byte[] { 1, 2, 3 });
+            cancellation.Cancel();
+            cancellation.Token.ThrowIfCancellationRequested();
         }
     }
 
