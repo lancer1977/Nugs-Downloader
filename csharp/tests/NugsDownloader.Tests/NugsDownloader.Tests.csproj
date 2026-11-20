@@ -16,6 +16,9 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <None Update="Fixtures\*.mp4" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\NugsDownloader.App\NugsDownloader.App.csproj" />
     <ProjectReference Include="..\..\NugsDownloader.Domain\NugsDownloader.Domain.csproj" />
     <ProjectReference Include="..\..\NugsDownloader.Infrastructure\NugsDownloader.Infrastructure.csproj" />

@@ -184,7 +184,7 @@ public sealed class NugsApiClient
         return await JsonSerializer.DeserializeAsync<PlistMeta>(await response.Content.ReadAsStreamAsync(ct), JsonOptions, ct);
     }
 
-    public async Task DownloadFileAsync(Uri mediaUri, Stream destination, CancellationToken ct)
+    public async Task<string?> DownloadFileAsync(Uri mediaUri, Stream destination, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, mediaUri);
         request.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
@@ -194,6 +194,7 @@ public sealed class NugsApiClient
 
         await using var source = await response.Content.ReadAsStreamAsync(ct);
         await source.CopyToAsync(destination, ct);
+        return response.Content.Headers.ContentType?.MediaType;
     }
 
     public async Task<Uri> ResolveFullQualityAudioUrlAsync(
